@@ -138,6 +138,16 @@ ViewInfo currentView() {
 
 void applyMouse(const VirtualMouse& m) {
     State& s = S();
+    if (m.active != s.mouse.active && s.hwnd) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(s.hwnd, &pt);
+        if (m.active)
+            LOG_INFO("virtual mouse on at (%d,%d), button %s", m.x, m.y, m.lmb ? "down" : "up");
+        else
+            LOG_INFO("virtual mouse off at (%d,%d); the game cursor goes back to the mouse at (%ld,%ld)", s.mouse.x,
+                     s.mouse.y, pt.x, pt.y);
+    }
     const bool lmb = m.active && m.lmb;
     if (s.button.set(lmb, GetTickCount())) {
         if (s.cfg.buttons == ButtonChannel::Messages && s.hwnd)

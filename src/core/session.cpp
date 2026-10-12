@@ -12,6 +12,13 @@ namespace {
 
 constexpr uint32_t kStaleMs = 500;
 constexpr uint32_t kMarkStaleMs = 1000;  // a late "!" could land on the wrong moment
+constexpr uint32_t kAfterStopLogMs = 1500;
+
+std::string hotkeyText(const Hotkey& k) {
+    if (k.id == 0) return "empty";
+    if (k.type == 0) return "item " + std::to_string(k.id);
+    return "skill " + std::to_string(k.id) + " lv " + std::to_string(k.lv);
+}
 
 std::string hex16(uint16_t v) {
     char b[8];
@@ -64,7 +71,14 @@ void Session::feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs) {
             log_.push_back("map server connection, account " + std::to_string(*account));
         } else if (auto change = parseHotkeyChange(p)) {
             world_.setHotkey(change->index, change->key);
+            const int row = change->index / 9 + 1;
+            const std::string slot = "F" + std::to_string(change->index % 9 + 1);
+            log_.push_back("hotkey bar: " + (row == 1 ? slot : "row " + std::to_string(row) + " " + slot) + " = " +
+                           hotkeyText(change->key) + (row == 1 ? "" : " (the pad uses row 1 only)"));
         } else if (auto dest = parseWalkRequest(p)) {
+            if (justStoppedWalking(nowMs))
+                log_.push_back("after the stick: the client asks to walk to " + cellText(*dest) + "; we are at " +
+                               cellText(world_.selfPos(nowMs)));
             controller_.onClientWalk(*dest, world_, nowMs);
         } else if (p.size() >= 2 && (rd16(p.data(), 0) == 0x0072 || rd16(p.data(), 0) == 0x0113)) {
             controller_.onClientSkill(nowMs);  // useskilltoid / useskilltopos
@@ -84,6 +98,8 @@ void Session::onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t n
     for (const Bytes& p : packets) {
         auto ev = parseS2C(p);
         if (!ev) continue;
+        if (const auto* walk = std::get_if<EvSelfWalk>(&*ev); walk && justStoppedWalking(nowMs))
+            log_.push_back("after the stick: the server walks us " + cellText(walk->from) + " -> " + cellText(walk->to));
         world_.apply(*ev, nowMs);
         if (std::holds_alternative<EvAuthOk>(*ev) || std::holds_alternative<EvMapChange>(*ev)) controller_.onMapLoaded();
         if (const auto* bar = std::get_if<EvHotkeys>(&*ev)) {
@@ -117,8 +133,14 @@ void Session::onUnobserved(SocketId s, Direction dir) {
     }
 }
 
+bool Session::justStoppedWalking(uint32_t nowMs) const {
+    return walkStopMs_ && nowMs - *walkStopMs_ <= kAfterStopLogMs;
+}
+
 TickOutput Session::tick(const PadState& pad, const ViewInfo& view, uint32_t nowMs) {
     TickOutput out = controller_.tick(pad, world_, view, nowMs);
+    if (padWalking_ && !controller_.walking()) walkStopMs_ = nowMs;
+    padWalking_ = controller_.walking();
     std::vector<Bytes> requests = out.packets;
     if (out.mark != 0 && mark_ && mapSocket_ != 0 && downOk_) {
         toClient_.emplace_back(nowMs, buildEmotion(out.mark, kEmotionGasp));

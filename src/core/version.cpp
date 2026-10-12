@@ -2,6 +2,6 @@
 
 namespace uapad {
 
-const char* version() { return "0.2.0"; }
+const char* version() { return "0.2.1"; }
 
 }  // namespace uapad

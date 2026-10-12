@@ -16,7 +16,7 @@ struct SlotDecision {
     uint32_t newTarget = 0;  // != 0: the controller should adopt this monster as its target
     uint32_t actor = 0;      // Approach: walk until within `range` of this actor, then cast
     bool ground = false;     // Approach: cast on the actor's cell instead of on the actor
-    uint16_t skill = 0;
+    uint16_t skill = 0;      // Send or Approach of a skill: which skill and level
     uint16_t lv = 0;
     int range = 1;
     std::string reason;      // Deny: why, for the log

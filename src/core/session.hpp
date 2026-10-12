@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -55,10 +56,13 @@ private:
     };
 
     void feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs);
+    bool justStoppedWalking(uint32_t nowMs) const;
 
     WorldState world_;
     Controller controller_;
     bool mark_ = true;  // [aim] mark
+    bool padWalking_ = false;
+    std::optional<uint32_t> walkStopMs_;  // the stick walk ended: what follows is logged for a moment
     std::unordered_map<SocketId, Conn> conns_;
     SocketId mapSocket_ = 0;
     bool downOk_ = false;

@@ -37,6 +37,7 @@ public:
     bool inGame() const { return inGame_; }
     Cell selfPos(uint32_t nowMs) const;
     bool selfMoving(uint32_t nowMs) const { return selfPos(nowMs) != selfTo_; }
+    Cell selfDest() const { return selfTo_; }  // where the server is walking us (our cell when standing)
     bool sitting() const { return sitting_; }
     // Our last step on this map as a vector (destination - start), nothing before the first one.
     std::optional<Cell> lastMove() const { return lastMove_; }

@@ -325,3 +325,54 @@ TEST(session_new_map_forgets_the_camera_turn) {
     CHECK_EQ(s.world().selfPos(200), (Cell{150, 150}));
     CHECK_EQ(s.controller().camera().samples(), 0u);
 }
+
+TEST(session_logs_what_follows_a_stick_release) {
+    Session s{Config{}};
+    connect(s);
+    PadState walk;
+    walk.connected = true;
+    walk.lx = 1.0f;
+    s.tick(walk, kView, 100);
+    s.takeLog();
+    const Bytes during = buildWalk(Cell{108, 100});
+    s.onClientSent(kMap, during.data(), during.size(), 150);  // while the stick walks: not logged
+    CHECK(s.takeLog().empty());
+    PadState none;
+    none.connected = true;
+    s.tick(none, kView, 200);  // released
+    s.takeLog();
+    const Bytes after = buildWalk(Cell{95, 100});
+    s.onClientSent(kMap, after.data(), after.size(), 230);
+    Bytes ok(size_t(s2cLength(0x0087)), 0);  // the server's answer: walking us west
+    wr16(ok, 0, 0x0087);
+    encodePos6(ok, 6, Cell{100, 100}, Cell{95, 100});
+    s.onServerData(kMap, ok.data(), ok.size(), 260);
+    bool client = false, server = false;
+    for (const std::string& line : s.takeLog()) {
+        client = client || line == "after the stick: the client asks to walk to (95,100); we are at (100,100)";
+        server = server || line == "after the stick: the server walks us (100,100) -> (95,100)";
+    }
+    CHECK(client);
+    CHECK(server);
+    s.onClientSent(kMap, after.data(), after.size(), 1800);  // 1.6 s after the release: quiet again
+    CHECK(s.takeLog().empty());
+}
+
+TEST(session_logs_hotkey_changes) {
+    Session s{Config{}};
+    connect(s);
+    s.takeLog();
+    Bytes change(11, 0);
+    wr16(change, 0, 0x02ba);
+    wr16(change, 2, 0);  // F1, first row
+    change[4] = 1;
+    wr32(change, 5, 46);
+    wr16(change, 9, 10);
+    s.onClientSent(kMap, change.data(), change.size(), 10);
+    wr16(change, 2, 9);  // F1 of the second row
+    s.onClientSent(kMap, change.data(), change.size(), 20);
+    const std::vector<std::string> lines = s.takeLog();
+    CHECK_EQ(lines.size(), 2u);
+    CHECK(lines.size() == 2 && lines[0] == "hotkey bar: F1 = skill 46 lv 10");
+    CHECK(lines.size() == 2 && lines[1] == "hotkey bar: row 2 F1 = skill 46 lv 10 (the pad uses row 1 only)");
+}

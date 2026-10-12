@@ -52,6 +52,7 @@ public:
     void onMapLoaded() { camera_.reset(); }
 
     bool enabled() const { return enabled_; }
+    bool walking() const { return walking_; }  // the left stick holds the virtual mouse
     uint32_t target() const { return target_; }
     bool attacking() const { return wantAttack_; }
     bool approaching() const { return approach_.has_value(); }

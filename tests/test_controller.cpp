@@ -34,6 +34,22 @@ TEST(ctl_walk_ring_point_and_stop) {
     CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{100, 100}));
 }
 
+TEST(ctl_walk_stop_note_tells_where) {
+    Controller c(Config{});
+    WorldState w = world();
+    PadState p = pad();
+    p.lx = 1.0f;
+    c.tick(p, w, view(), 100);
+    CHECK(c.walking());
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{108, 100}}, 120);  // the server walks us east
+    TickOutput o = c.tick(pad(), w, view(), 450);              // released: 2 cells walked by now
+    CHECK(!c.walking());
+    bool found = false;
+    for (const std::string& n : o.notes)
+        found = found || n == "walk stop at (102,100); the server was taking us to (108,100)";
+    CHECK(found);
+}
+
 TEST(ctl_walk_deadzone_and_center_press) {
     Config cfg;
     cfg.press = PressMode::Center;
@@ -421,6 +437,18 @@ TEST(ctl_slot_buttons_cover_the_first_row) {
     o = tap(pad(kPadDown));  // F9: Ankle Snare, next to us towards the target
     CHECK(one(o, 0x0113) && rd16(pkt(o, 0).data(), 9) == 117);
     CHECK(!c.attacking());  // no button but A starts an attack
+}
+
+TEST(ctl_slot_press_note_says_what_went_out) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    TickOutput o = c.tick(pad(kPadY), w, view(), 1000);  // F2: Heal
+    CHECK(!o.notes.empty() && o.notes.back() == "F2: skill 28 lv 5");
+    o = c.tick(pad(kPadY), w, view(), 1250);  // the held repeat stays quiet
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK(o.notes.empty());
+    o = c.tick(padRT(0), w, view(), 1400);  // F5: Red Potion
+    CHECK(!o.notes.empty() && o.notes.back() == "F5: item 501");
 }
 
 TEST(ctl_triggers_have_hysteresis) {

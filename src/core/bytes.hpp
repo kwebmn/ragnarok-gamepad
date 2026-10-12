@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace uapad {
@@ -27,6 +28,7 @@ struct Cell {
 };
 inline bool operator==(const Cell& a, const Cell& b) { return a.x == b.x && a.y == b.y; }
 inline bool operator!=(const Cell& a, const Cell& b) { return !(a == b); }
+inline std::string cellText(const Cell& c) { return "(" + std::to_string(c.x) + "," + std::to_string(c.y) + ")"; }
 
 // Chebyshev distance: how uAthena measures ranges (battle_check_range, check_distance).
 inline int cellDistance(const Cell& a, const Cell& b) {

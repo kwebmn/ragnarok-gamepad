@@ -196,8 +196,10 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
     if (walking_) {
         walking_ = false;
         ringSteadyFromMs_.reset();
-        out.packets.push_back(buildWalk(world.selfPos(now)));  // stop where we are
-        out.notes.push_back("walk stop");
+        const Cell here = world.selfPos(now);
+        out.packets.push_back(buildWalk(here));  // stop where we are
+        out.notes.push_back("walk stop at " + cellText(here) + "; the server was taking us to " +
+                            cellText(world.selfDest()));
     }
 }
 
@@ -320,6 +322,10 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
             break;
         case SlotDecision::Kind::Send:
             out.packets.push_back(std::move(d.packet));
+            if (!repeat)
+                out.notes.push_back("F" + std::to_string(slot + 1) + ": " +
+                                    (key.type == 0 ? "item " + std::to_string(key.id)
+                                                   : "skill " + std::to_string(d.skill) + " lv " + std::to_string(d.lv)));
             attackAgainSoon(now);
             break;
         case SlotDecision::Kind::Approach: {

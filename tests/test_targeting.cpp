@@ -32,6 +32,14 @@ TEST(targeting_nearest_is_by_straight_line) {
     CHECK(targetCandidates(w, 0, {}) == (std::vector<uint32_t>{110000002, 110000001}));
 }
 
+TEST(targeting_candidates_stay_within_reach) {
+    WorldState w = fx::world();  // we stand at (100, 100)
+    fx::addMob(w, 110000001, Cell{115, 100});  // 15 cells: in
+    fx::addMob(w, 110000002, Cell{116, 100});  // 16: off the screen, not a candidate
+    fx::addMob(w, 110000003, Cell{90, 130});   // 30
+    CHECK(targetCandidates(w, 0, {}) == (std::vector<uint32_t>{110000001}));
+}
+
 TEST(targeting_blacklist_until_expiry) {
     WorldState w = fx::world();
     fx::addMob(w, 110000001, Cell{101, 100});

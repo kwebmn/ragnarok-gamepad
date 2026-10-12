@@ -264,6 +264,40 @@ TEST(ctl_slot_does_not_cast_on_a_far_target) {
     CHECK(cast);
 }
 
+TEST(ctl_held_attack_leaves_monsters_beyond_reach_alone) {
+    Controller c(Config{});
+    WorldState w = world();  // the server shows monsters up to 35 cells away (uAthena area_size)
+    addMob(w, 110000001, Cell{120, 100});
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1000);
+    CHECK(o.rumble == Rumble::Denied);  // the press: no monster within reach
+    CHECK(o.packets.empty());
+    int packets = 0;
+    int rumbles = 0;
+    for (uint32_t t = 1016; t < 2000; t += 16) {
+        o = c.tick(pad(kPadA), w, view(), t);
+        packets += int(o.packets.size());
+        rumbles += o.rumble != Rumble::None ? 1 : 0;
+    }
+    CHECK_EQ(packets, 0);
+    CHECK_EQ(rumbles, 0);
+    CHECK_EQ(c.target(), 0u);
+    addMob(w, 110000002, Cell{104, 100});  // one comes into reach: the held A takes it
+    o = c.tick(pad(kPadA), w, view(), 2100);
+    CHECK_EQ(c.target(), 110000002u);
+}
+
+TEST(ctl_slot_with_only_a_far_monster_is_denied) {
+    Controller c(Config{});
+    WorldState w = slotWorld();  // X: Bash (range 1)
+    addMob(w, 110000001, Cell{100, 120});
+    TickOutput o = c.tick(pad(kPadX), w, view(), 1000);
+    CHECK(o.rumble == Rumble::Denied);
+    bool walk = false;
+    for (const Bytes& p : o.packets) walk = walk || pid(p) == 0x00a7;
+    CHECK(!walk);
+    CHECK_EQ(c.target(), 0u);
+}
+
 TEST(ctl_candidates_are_monsters_only) {
     Controller c(Config{});
     WorldState w = world();

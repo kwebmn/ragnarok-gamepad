@@ -12,7 +12,8 @@ namespace uapad {
 // behind is dropped.
 constexpr int kTargetReach = 15;
 
-// Monsters we may target, nearest first: by straight-line distance, then RO steps, then id.
+// Monsters we may target — within kTargetReach — nearest first: by straight-line distance, then RO steps,
+// then id.
 // Ids in `blacklistUntil` are skipped until nowMs reaches their deadline.
 std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
                                        const std::unordered_map<uint32_t, uint32_t>& blacklistUntil);

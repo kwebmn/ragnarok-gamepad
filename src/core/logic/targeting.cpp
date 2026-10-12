@@ -26,11 +26,13 @@ std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
         const uint32_t id = entry.first;
         if (!world.isMonster(entry.second)) continue;
         if (blacklisted(blacklistUntil, id, nowMs)) continue;
-        if (auto pos = world.actorPos(id, nowMs)) {
-            const int dx = pos->x - me.x;
-            const int dy = pos->y - me.y;
-            scored.emplace_back(dx * dx + dy * dy, cellDistance(me, *pos), id);
-        }
+        auto pos = world.actorPos(id, nowMs);
+        if (!pos) continue;
+        const int steps = cellDistance(me, *pos);
+        if (steps > kTargetReach) continue;  // the server shows monsters well off the screen (area_size 35)
+        const int dx = pos->x - me.x;
+        const int dy = pos->y - me.y;
+        scored.emplace_back(dx * dx + dy * dy, steps, id);
     }
     std::sort(scored.begin(), scored.end());
     std::vector<uint32_t> ids;

@@ -47,23 +47,18 @@ size_t bitIndex(uint16_t button) {
 
 }  // namespace
 
-const Controller::Binding Controller::kLayout[] = {
-    {kPadA, Action::Attack, 0},
-    {kPadX, Action::Slot, 0},     // F1
-    {kPadY, Action::Slot, 1},     // F2
-    {kPadB, Action::Slot, 2},     // F3
-    {kPadRB, Action::Slot, 3},    // F4
-    {kPadRT, Action::Slot, 4},    // F5
-    {kPadLB, Action::Slot, 5},    // F6
-    {kPadUp, Action::Slot, 6},    // F7
-    {kPadRight, Action::Slot, 7}, // F8
-    {kPadDown, Action::Slot, 8},  // F9
-    {kPadLT, Action::Pickup, 0},
-    {kPadLeft, Action::SitStand, 0},
-    {kPadR3, Action::ClearTarget, 0},
-};
-
 Controller::Controller(const Config& cfg) : cfg_(cfg), enabled_(cfg.enabled) {}
+
+void Controller::setBindings(const Bindings& bindings) {
+    bindings_ = bindings;
+    armed_ = 0;  // a button held right now may mean something else: it acts again on its next press
+}
+
+bool Controller::attackHeld() const {
+    for (size_t i = 0; i < kBindableButtons.size(); ++i)
+        if (bindings_[i].kind == Action::Kind::Attack && (armed_ & kBindableButtons[i])) return true;
+    return false;
+}
 
 void Controller::deny(TickOutput& out, const std::string& why) {
     if (out.rumble == Rumble::None) out.rumble = Rumble::Denied;
@@ -134,6 +129,16 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
     const uint16_t down = uint16_t(buttons & ~prevButtons_);
     prevButtons_ = buttons;
 
+    if (view.paused) {  // the settings menu has the pad: stop walking, act on nothing, remember what is held
+        PadState still = pad;
+        still.lx = still.ly = 0;
+        walk(still, world, view, now, out);
+        out.mouse = VirtualMouse{};
+        armed_ = 0;
+        aiming_ = false;
+        approach_.reset();
+        return out;
+    }
     if (down & kPadBack) {
         enabled_ = !enabled_;
         out.rumble = enabled_ ? Rumble::PadOn : Rumble::PadOff;
@@ -157,7 +162,7 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
     aim(pad, world, now, out);
     handleButtons(buttons, down, world, now, out);
     stepApproach(world, now, out);
-    maintainTarget((armed_ & kPadA) != 0, world, now, out);
+    maintainTarget(attackHeld(), world, now, out);
     return out;
 }
 
@@ -243,51 +248,56 @@ void Controller::aim(const PadState& pad, const WorldState& world, uint32_t now,
 void Controller::handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now,
                                TickOutput& out) {
     armed_ = uint16_t((armed_ & held) | down);
-    for (const Binding& b : kLayout) {
-        if (down & b.button) {
+    for (size_t i = 0; i < kBindableButtons.size(); ++i) {
+        if ((down & kBindableButtons[i]) && bindings_[i].kind != Action::Kind::None) {
             approach_.reset();  // a new press overrides walking up to something
             break;
         }
     }
-    for (const Binding& b : kLayout) {
-        const size_t bit = bitIndex(b.button);
-        if (down & b.button) {
-            fire(b, false, world, now, out);
+    for (size_t i = 0; i < kBindableButtons.size(); ++i) {
+        const uint16_t button = kBindableButtons[i];
+        const Action& a = bindings_[i];
+        if (a.kind == Action::Kind::None) continue;
+        const size_t bit = bitIndex(button);
+        if (down & button) {
+            fire(a, false, world, now, out);
             repeatAtMs_[bit] = now + uint32_t(cfg_.repeatMs);
             continue;
         }
-        const bool repeats = b.action == Action::Slot || b.action == Action::Pickup;
-        if (repeats && cfg_.repeatMs > 0 && (armed_ & b.button) && !ownsApproach(b) &&
+        const bool repeats = a.kind == Action::Kind::Slot || a.kind == Action::Kind::Pickup;
+        if (repeats && cfg_.repeatMs > 0 && (armed_ & button) && !ownsApproach(a) &&
             int32_t(now - repeatAtMs_[bit]) >= 0) {
-            fire(b, true, world, now, out);
+            fire(a, true, world, now, out);
             repeatAtMs_[bit] = now + uint32_t(cfg_.repeatMs);
         }
     }
 }
 
 // The button whose press is walking us up to something waits for that walk; the others keep repeating.
-bool Controller::ownsApproach(const Binding& b) const {
+bool Controller::ownsApproach(const Action& a) const {
     if (!approach_) return false;
-    if (b.action == Action::Slot) return !approach_->pickup && approach_->slot == b.slot;
-    return b.action == Action::Pickup && approach_->pickup;
+    if (a.kind == Action::Kind::Slot) return !approach_->pickup && approach_->slot == int(a.slot);
+    return a.kind == Action::Kind::Pickup && approach_->pickup;
 }
 
-void Controller::fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
-    switch (b.action) {
-        case Action::Attack:
+void Controller::fire(const Action& a, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
+    switch (a.kind) {
+        case Action::Kind::None:
+            break;
+        case Action::Kind::Attack:
             attack(world, now, out);
             break;
-        case Action::Slot:
-            useSlot(b.slot, repeat, world, now, out);
+        case Action::Kind::Slot:
+            useSlot(a.slot, repeat, world, now, out);
             break;
-        case Action::Pickup:
+        case Action::Kind::Pickup:
             pickup(repeat, world, now, out);
             break;
-        case Action::SitStand:
+        case Action::Kind::SitStand:
             out.packets.push_back(buildAction(0, world.sitting() ? kActionStand : kActionSit));
             stopAttacking();
             break;
-        case Action::ClearTarget:
+        case Action::Kind::ClearTarget:
             clearTarget(world, now, out);
             break;
     }
@@ -312,9 +322,9 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
         if (repeat) return;
         const std::string& why = world.hotkeyNote(slot);
         if (!why.empty())
-            deny(out, "F" + std::to_string(slot + 1) + ": " + why);
+            deny(out, hotkeyName(slot) + ": " + why);
         else
-            deny(out, "slot F" + std::to_string(slot + 1) + " is empty" +
+            deny(out, "slot " + hotkeyName(slot) + " is empty" +
                           (world.hotkeysKnown() ? std::string() : std::string(" (the pad could not read the hotkey bar)")));
         return;
     }
@@ -338,7 +348,7 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
         case SlotDecision::Kind::Send:
             out.packets.push_back(std::move(d.packet));
             if (!repeat)
-                out.notes.push_back("F" + std::to_string(slot + 1) + ": " +
+                out.notes.push_back(hotkeyName(slot) + ": " +
                                     (key.type == 0 ? "item " + std::to_string(key.id)
                                                    : "skill " + std::to_string(d.skill) + " lv " + std::to_string(d.lv)));
             attackAgainSoon(now);

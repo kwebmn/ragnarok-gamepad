@@ -1,5 +1,6 @@
 #include <cmath>
 
+#include "core/config/bindings.hpp"
 #include "pad_fixtures.hpp"
 #include "test.hpp"
 
@@ -959,4 +960,100 @@ TEST(ctl_camera_learns_only_from_a_steady_walking_point) {
     c.tick(pad(), w, view(), 1400);  // stopped: walks the player clicks with the mouse teach nothing
     c.onClientWalk(Cell{93, 100}, w, 1450);
     CHECK_EQ(c.camera().samples(), 1u);
+}
+
+// --- layouts from the menu ---
+
+namespace {
+
+size_t bindIndex(uint16_t button) {
+    for (size_t i = 0; i < kBindableButtons.size(); ++i)
+        if (kBindableButtons[i] == button) return i;
+    return 0;
+}
+
+}  // namespace
+
+TEST(ctl_custom_bindings) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{102, 100});
+    Bindings b = defaultBindings();
+    b[bindIndex(kPadX)] = Action{Action::Kind::Attack, 0};
+    b[bindIndex(kPadA)] = Action{Action::Kind::Slot, 1};  // F2: Heal
+    c.setBindings(b);
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1000);
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK(pid(pkt(o, 0)) == 0x0072 && rd16(pkt(o, 0).data(), 10) == 28);
+    CHECK(!c.attacking());
+    c.tick(pad(), w, view(), 1100);
+    o = c.tick(pad(kPadX), w, view(), 1200);
+    CHECK(c.attacking());
+    CHECK_EQ(c.target(), 110000001u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+}
+
+TEST(ctl_unbound_button_does_nothing) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{102, 100});
+    Bindings b = defaultBindings();
+    b[bindIndex(kPadA)] = Action{};
+    c.setBindings(b);
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1000);
+    CHECK(o.packets.empty());
+    CHECK(o.rumble == Rumble::None);
+    CHECK(!c.attacking());
+}
+
+TEST(ctl_held_attack_follows_its_button) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});
+    addMob(w, 110000002, Cell{104, 100});
+    Bindings b = defaultBindings();
+    b[bindIndex(kPadA)] = Action{};
+    b[bindIndex(kPadY)] = Action{Action::Kind::Attack, 0};
+    c.setBindings(b);
+    c.tick(pad(kPadY), w, view(), 1000);
+    c.tick(pad(kPadY), w, view(), 1100);
+    w.apply(EvVanish{110000001, 1}, 1200);
+    c.tick(pad(kPadY), w, view(), 1400);
+    CHECK_EQ(c.target(), 110000002u);  // held Y moves on like a held A did
+}
+
+TEST(ctl_slot_from_the_second_row) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    w.setHotkey(10, Hotkey{1, 28, 5});  // row 2, F2: Heal
+    Bindings b = defaultBindings();
+    b[bindIndex(kPadX)] = Action{Action::Kind::Slot, 10};
+    c.setBindings(b);
+    TickOutput o = c.tick(pad(kPadX), w, view(), 1000);
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK(rd16(pkt(o, 0).data(), 10) == 28);
+}
+
+TEST(ctl_paused_for_the_menu) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{102, 100});
+    PadState p = pad();
+    p.lx = 1.0f;
+    c.tick(p, w, view(), 1000);  // walking
+    ViewInfo paused = view();
+    paused.paused = true;
+    TickOutput o = c.tick(p, w, paused, 1100);  // the menu opened: stop
+    CHECK(!o.mouse.active);
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
+    o = c.tick(pad(kPadA | kPadX), w, paused, 1200);  // menu navigation: nothing for the game
+    CHECK(o.packets.empty());
+    CHECK_EQ(c.target(), 0u);
+    o = c.tick(pad(kPadA | kPadX), w, view(), 1300);  // closed with A still held: not a new press
+    CHECK(o.packets.empty());
+    CHECK_EQ(c.target(), 0u);
+    c.tick(pad(), w, view(), 1400);
+    o = c.tick(pad(kPadA), w, view(), 1500);  // a real press
+    CHECK_EQ(c.target(), 110000001u);
 }

@@ -26,6 +26,11 @@ struct GroundItem {
 };
 
 constexpr int kHotkeySlots = 27;
+// "F3" for the first row, "F3 of row 2" for the others (for the log).
+inline std::string hotkeyName(int slot) {
+    const std::string key = "F" + std::to_string(slot % 9 + 1);
+    return slot < 9 ? key : key + " of row " + std::to_string(slot / 9 + 1);
+}
 constexpr int kClientBarSlots = 9;  // F1-F9 of the first row: what the pad's buttons use
 
 // A hotkey slot as the client itself keeps it. The uaRO client never sends its bar (no 0x02b9 / 0x02ba),

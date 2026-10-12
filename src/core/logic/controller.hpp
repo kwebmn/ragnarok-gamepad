@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "core/config/bindings.hpp"
 #include "core/config/config.hpp"
 #include "core/logic/camera.hpp"
 #include "core/logic/pad.hpp"
@@ -19,6 +20,7 @@ struct ViewInfo {
     int width = 0;  // client area, px
     int height = 0;
     bool mouseClicked = false;  // the player pressed the real left mouse button since the last tick
+    bool paused = false;        // the settings menu is open: the pad belongs to it
 };
 
 struct VirtualMouse {
@@ -36,8 +38,8 @@ struct TickOutput {
     std::vector<std::string> notes;  // decisions worth a log line
 };
 
-// The 0.2 layout: the left stick walks, the right stick picks a monster, A attacks, X/Y/B/RB/RT/LB and
-// D-pad up/right/down fire hotkey slots F1-F9, LT picks up, D-pad left sits, R3 drops the target.
+// The left stick walks, the right stick picks a monster, Back switches the pad off; every other button does
+// what its Bindings say (by default the 0.2 hunter layout).
 class Controller {
 public:
     explicit Controller(const Config& cfg);
@@ -51,6 +53,9 @@ public:
     // A map was loaded. The client may have set its camera back, and one walk teaches the turn again.
     void onMapLoaded() { camera_.reset(); }
 
+    void setBindings(const Bindings& bindings);
+    const Bindings& bindings() const { return bindings_; }
+
     bool enabled() const { return enabled_; }
     bool walking() const { return walking_; }  // the left stick holds the virtual mouse
     uint32_t target() const { return target_; }
@@ -59,12 +64,6 @@ public:
     const CameraYaw& camera() const { return camera_; }
 
 private:
-    enum class Action { Attack, Slot, Pickup, SitStand, ClearTarget };
-    struct Binding {
-        uint16_t button;
-        Action action;
-        int slot;  // Action::Slot: hotkey index
-    };
     struct Approach {
         bool pickup = false;  // floor item pickup, otherwise a skill
         uint32_t id = 0;      // floor item id or actor id
@@ -77,14 +76,13 @@ private:
         std::optional<uint32_t> lastStepMs;
     };
 
-    static const Binding kLayout[];
-
     uint16_t readButtons(const PadState& pad);
     void walk(const PadState& pad, const WorldState& world, const ViewInfo& view, uint32_t now, TickOutput& out);
     void aim(const PadState& pad, const WorldState& world, uint32_t now, TickOutput& out);
     void handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now, TickOutput& out);
-    void fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
-    bool ownsApproach(const Binding& b) const;
+    void fire(const Action& a, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    bool ownsApproach(const Action& a) const;
+    bool attackHeld() const;
     void attack(const WorldState& world, uint32_t now, TickOutput& out);
     void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
@@ -100,6 +98,7 @@ private:
     void deny(TickOutput& out, const std::string& why);
 
     Config cfg_;
+    Bindings bindings_ = defaultBindings();
     bool enabled_ = true;
     uint16_t prevButtons_ = 0;
     uint16_t armed_ = 0;  // held buttons whose press we saw while active: only these repeat

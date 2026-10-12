@@ -199,7 +199,7 @@ void Session::setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar
         const ClientBarSlot& s = bar[i];
         if (s.kind == ClientBarSlot::Kind::Empty) continue;
         line += line.empty() ? " " : ", ";
-        line += "F" + std::to_string(i + 1);
+        line += hotkeyName(int(i));
         if (s.kind == ClientBarSlot::Kind::Skill)
             line += " skill " + s.name + " lv " + std::to_string(s.level);
         else

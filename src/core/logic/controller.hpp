@@ -84,6 +84,7 @@ private:
     void attack(const WorldState& world, uint32_t now, TickOutput& out);
     void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    void sendTake(uint32_t item, uint32_t now, TickOutput& out);
     void clearTarget(const WorldState& world, uint32_t now, TickOutput& out);
     void stopAttacking();
     void attackAgainSoon(uint32_t now);
@@ -114,6 +115,8 @@ private:
     std::optional<uint32_t> engagedSinceMs_;  // our first attack request on target_: the give-up clock
     std::optional<uint32_t> lastAttackMs_;
     std::array<std::optional<uint32_t>, kHotkeySlots> lastSlotMs_{};
+    std::optional<uint32_t> lastPickupMs_;
+    std::unordered_map<uint32_t, uint32_t> pickupTriedMs_;  // floor item id -> our first takeitem for it
     std::unordered_map<uint32_t, uint32_t> blacklist_;  // actor id -> blacklisted until (ms)
     std::unordered_map<uint32_t, uint32_t> markedMs_;   // actor id -> when we last showed its "!"
     std::optional<Approach> approach_;

@@ -610,6 +610,36 @@ TEST(ctl_held_pickup_takes_items_one_by_one) {
     CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4243u);
 }
 
+TEST(ctl_held_pickup_moves_past_an_item_it_cannot_take) {
+    Controller c(Config{});
+    WorldState w = world();
+    w.apply(EvGroundItem{4242, 909, Cell{101, 100}}, 0);  // someone else's loot: the server keeps refusing it
+    w.apply(EvGroundItem{4243, 909, Cell{102, 100}}, 0);
+    const PadState lt = padLT(0);
+    CHECK_EQ(rd32(pkt(c.tick(lt, w, view(), 1000), 0).data(), 4), 4242u);
+    CHECK_EQ(rd32(pkt(c.tick(lt, w, view(), 1250), 0).data(), 4), 4242u);  // tried again
+    TickOutput o = c.tick(lt, w, view(), 2000);  // a second on it and it is still there: the next one
+    CHECK(c.approaching());
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
+    c.tick(pad(), w, view(), 2100);
+    o = c.tick(lt, w, view(), 2200);  // a new press gives it another try
+    CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4242u);
+}
+
+TEST(ctl_held_pickup_waits_after_a_walk_up) {
+    Controller c(Config{});
+    WorldState w = world();
+    w.apply(EvGroundItem{4242, 909, Cell{104, 100}}, 0);
+    c.tick(padLT(0), w, view(), 1000);
+    CHECK(c.approaching());
+    w.apply(EvSetPos{kSelf, Cell{103, 100}}, 1400);
+    TickOutput o = c.tick(padLT(0), w, view(), 1450);  // arrived: picked up
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
+    CHECK(c.tick(padLT(0), w, view(), 1460).packets.empty());  // not a second request right behind it
+}
+
 TEST(ctl_pickup_nothing_denied_and_approach_timeout) {
     Controller c(Config{});
     WorldState w = world();

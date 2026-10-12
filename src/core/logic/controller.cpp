@@ -23,6 +23,7 @@ constexpr uint32_t kRingSettleMs = 150;
 constexpr double kRingTurn = 10.0 * kPi / 180.0;
 constexpr uint32_t kMarkAgainMs = 1000;
 constexpr uint32_t kReattackMs = 1000;  // standing still without a hit of ours this long: ask again
+constexpr uint32_t kPickupGiveUpMs = 1000;  // still on the ground a second after we asked: not ours to take
 constexpr int kPickupRadius = 10;
 constexpr int kPickupReach = 1;
 
@@ -329,7 +330,21 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
     }
 }
 
+void Controller::sendTake(uint32_t item, uint32_t now, TickOutput& out) {
+    out.packets.push_back(buildTakeItem(item));
+    lastPickupMs_ = now;
+    pickupTriedMs_.emplace(item, now);
+}
+
 void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
+    if (repeat && !due(lastPickupMs_, now, kSlotIntervalMs)) return;  // e.g. right behind a walk-up's take
+    if (!repeat) pickupTriedMs_.clear();  // a new press gives every item another try
+    for (auto it = pickupTriedMs_.begin(); it != pickupTriedMs_.end();) {
+        if (world.groundItems().count(it->first) == 0)
+            it = pickupTriedMs_.erase(it);
+        else
+            ++it;
+    }
     const Cell me = world.selfPos(now);
     const GroundItem* best = nullptr;
     int bestDist = 0;
@@ -337,6 +352,8 @@ void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, Tick
         const GroundItem& item = entry.second;
         const int d = cellDistance(me, item.pos);
         if (d > kPickupRadius) continue;
+        auto tried = pickupTriedMs_.find(item.id);  // someone else's loot or too heavy: move on
+        if (tried != pickupTriedMs_.end() && now - tried->second >= kPickupGiveUpMs) continue;
         if (!best || d < bestDist || (d == bestDist && item.id < best->id)) {
             best = &item;
             bestDist = d;
@@ -347,7 +364,7 @@ void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, Tick
         return;
     }
     if (bestDist <= kPickupReach) {
-        out.packets.push_back(buildTakeItem(best->id));
+        sendTake(best->id, now, out);
         return;
     }
     if (walking_) {  // no walking up against the stick; a held LT picks things up as we pass them
@@ -399,7 +416,7 @@ void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput&
     }
     if (cellDistance(world.selfPos(now), *goal) <= ap.range) {
         if (ap.pickup)
-            out.packets.push_back(buildTakeItem(ap.id));
+            sendTake(ap.id, now, out);
         else if (ap.ground)
             out.packets.push_back(buildSkillToPos(ap.skill, ap.lv, *goal));
         else

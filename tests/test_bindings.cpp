@@ -104,3 +104,21 @@ TEST(bindings_labels) {
     CHECK(std::string(buttonLabel(indexOf(kPadUp))) == "D-pad ↑");
     CHECK(std::string(buttonToken(indexOf(kPadRight))) == "RIGHT");
 }
+
+TEST(bindings_saving_one_layout_keeps_the_others) {
+    Profiles disk;  // what another client already wrote
+    disk.fallback[indexOf(kPadL3)] = slot(9);
+    disk.characters[1].name = "Priest";
+    disk.characters[1].bindings = defaultBindings();
+    disk.characters[1].bindings[indexOf(kPadA)] = slot(1);
+    Bindings hunter = defaultBindings();
+    hunter[indexOf(kPadX)] = kind(Action::Kind::Attack);
+    const Profiles merged = withLayout(disk, 2, "Hunter", hunter);
+    CHECK(merged.characters.count(1) && merged.characters.at(1).bindings == disk.characters.at(1).bindings);
+    CHECK(merged.characters.count(2) && merged.characters.at(2).bindings == hunter);
+    CHECK(merged.characters.count(2) && merged.characters.at(2).name == "Hunter");
+    CHECK(merged.fallback == disk.fallback);
+    const Profiles def = withLayout(disk, 0, "", hunter);  // before login: the default layout
+    CHECK(def.fallback == hunter);
+    CHECK_EQ(def.characters.size(), 1u);
+}

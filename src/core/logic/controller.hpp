@@ -111,6 +111,7 @@ private:
     double ringAngle_ = 0;
     std::optional<uint32_t> ringSteadyFromMs_;  // walk requests from then on tell the camera's turn
     std::optional<Cell> stickDest_;  // the client's latest walk request while the stick walks
+    bool paused_ = false;  // the settings menu had the pad last tick
     bool aiming_ = false;
     bool aimLatched_ = false;  // R3 dropped the target: no aiming until the stick comes back
     uint32_t target_ = 0;

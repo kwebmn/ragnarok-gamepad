@@ -1057,3 +1057,31 @@ TEST(ctl_paused_for_the_menu) {
     o = c.tick(pad(kPadA), w, view(), 1500);  // a real press
     CHECK_EQ(c.target(), 110000001u);
 }
+
+TEST(ctl_menu_stops_a_walk_up_and_an_attack) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{102, 100});
+    addMob(w, 110000002, Cell{112, 100});
+    c.tick(pad(kPadA), w, view(), 1000);  // attacking the near one
+    c.tick(pad(), w, view(), 1100);
+    ViewInfo paused = view();
+    paused.paused = true;
+    TickOutput o = c.tick(pad(), w, paused, 1200);  // the menu opens
+    CHECK(!c.attacking());
+    bool stopAttack = false;
+    for (const Bytes& b : o.packets) stopAttack = stopAttack || pid(b) == 0x0118;
+    CHECK(stopAttack);
+    CHECK(c.tick(pad(), w, paused, 1300).packets.empty());  // only once
+    Controller c2(Config{});
+    WorldState w2 = slotWorld();
+    addMob(w2, 110000002, Cell{112, 100});
+    c2.tick(pad(kPadUp), w2, view(), 1000);  // Fire Bolt out of range: walking up
+    CHECK(c2.approaching());
+    w2.apply(EvSelfWalk{Cell{100, 100}, Cell{103, 100}}, 1050);
+    o = c2.tick(pad(), w2, paused, 1100);
+    CHECK(!c2.approaching());
+    bool stop = false;
+    for (const Bytes& b : o.packets) stop = stop || pid(b) == 0x00a7;
+    CHECK(stop);
+}

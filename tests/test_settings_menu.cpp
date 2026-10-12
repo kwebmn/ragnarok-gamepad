@@ -129,3 +129,26 @@ TEST(menu_rows_show_what_is_in_the_slots) {
     CHECK(rows[0].selected && !rows[1].selected);
     CHECK(rows.back().button.empty() && !rows.back().action.empty());
 }
+
+TEST(menu_diagonal_stick_moves_one_axis) {
+    SettingsMenu m = opened(0);
+    m.update(padOf(0, 0.8f, -0.7f), 10);  // mostly right, a bit down: change the action only
+    CHECK_EQ(m.selected(), 0u);
+    CHECK(m.bindings()[0] != defaultBindings()[0]);
+    m.update(padOf(0, 0, 0), 20);
+    m.update(padOf(0, 0.5f, -0.9f), 30);  // mostly down: next row only
+    CHECK_EQ(m.selected(), 1u);
+    CHECK(m.bindings()[1] == defaultBindings()[1]);
+}
+
+TEST(menu_stick_lets_go_lower_than_it_presses) {
+    SettingsMenu m = opened(0);
+    m.update(padOf(0, 0, -0.7f), 10);
+    CHECK_EQ(m.selected(), 1u);
+    m.update(padOf(0, 0, -0.5f), 20);  // eased off a little: still the same push
+    m.update(padOf(0, 0, -0.7f), 30);
+    CHECK_EQ(m.selected(), 1u);
+    m.update(padOf(0, 0, -0.3f), 40);  // let go
+    m.update(padOf(0, 0, -0.7f), 50);  // a new push
+    CHECK_EQ(m.selected(), 2u);
+}

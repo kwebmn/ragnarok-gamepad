@@ -208,6 +208,17 @@ Profiles parseProfiles(const std::string& text) {
     return p;
 }
 
+Profiles withLayout(Profiles onDisk, uint32_t charId, const std::string& name, const Bindings& bindings) {
+    if (charId == 0) {
+        onDisk.fallback = bindings;
+        return onDisk;
+    }
+    Profiles::Character& c = onDisk.characters[charId];
+    if (!name.empty()) c.name = name;
+    c.bindings = bindings;
+    return onDisk;
+}
+
 std::string formatProfiles(const Profiles& profiles) {
     std::ostringstream out;
     out << "; uaRO Pad: раскладки кнопок по персонажам. Файл пишет модуль из меню (Start в игре).\n";

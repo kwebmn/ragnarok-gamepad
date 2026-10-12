@@ -129,16 +129,24 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
     const uint16_t down = uint16_t(buttons & ~prevButtons_);
     prevButtons_ = buttons;
 
-    if (view.paused) {  // the settings menu has the pad: stop walking, act on nothing, remember what is held
+    if (view.paused) {  // the settings menu has the pad: the character stands, buttons only get remembered
+        if (!paused_) {
+            paused_ = true;
+            if (wantAttack_ || attackSent_) out.packets.push_back(buildStopAttack());
+            stopAttacking();
+            if (!walking_ && (approach_ || world.selfMoving(now)))  // a walk up to something: stop it too
+                out.packets.push_back(buildWalk(stopCell(world.selfPos(now), world.selfDest())));
+        }
         PadState still = pad;
         still.lx = still.ly = 0;
-        walk(still, world, view, now, out);
+        walk(still, world, view, now, out);  // the stick walk stops as usual
         out.mouse = VirtualMouse{};
         armed_ = 0;
         aiming_ = false;
         approach_.reset();
         return out;
     }
+    paused_ = false;
     if (down & kPadBack) {
         enabled_ = !enabled_;
         out.rumble = enabled_ ? Rumble::PadOn : Rumble::PadOff;

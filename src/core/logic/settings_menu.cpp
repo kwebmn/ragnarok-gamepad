@@ -1,22 +1,31 @@
 #include "core/logic/settings_menu.hpp"
 
+#include <cmath>
+
 namespace uapad {
 namespace {
 
 constexpr uint32_t kFirstRepeatMs = 350;
 constexpr uint32_t kRepeatMs = 120;
 constexpr float kStickPress = 0.6f;
+constexpr float kStickKeep = 0.4f;  // a push already under way lasts down to here
 
-int verticalOf(uint16_t buttons, float ly) {
-    if ((buttons & kPadUp) || ly > kStickPress) return -1;  // up the list
-    if ((buttons & kPadDown) || ly < -kStickPress) return 1;
-    return 0;
+// The D-pad, else the stick on its dominant axis only: a diagonal push never moves both ways at once.
+// `heldV` / `heldH`: that axis is pushed already, so it lets go at kStickKeep rather than kStickPress.
+int verticalOf(uint16_t buttons, float lx, float ly, bool heldV = false) {
+    if (buttons & kPadUp) return -1;  // up the list
+    if (buttons & kPadDown) return 1;
+    if (std::fabs(ly) < std::fabs(lx)) return 0;
+    const float t = heldV ? kStickKeep : kStickPress;
+    return ly > t ? -1 : ly < -t ? 1 : 0;
 }
 
-int horizontalOf(uint16_t buttons, float lx) {
-    if ((buttons & kPadLeft) || lx < -kStickPress) return -1;
-    if ((buttons & kPadRight) || lx > kStickPress) return 1;
-    return 0;
+int horizontalOf(uint16_t buttons, float lx, float ly, bool heldH = false) {
+    if (buttons & kPadLeft) return -1;
+    if (buttons & kPadRight) return 1;
+    if (std::fabs(lx) <= std::fabs(ly)) return 0;
+    const float t = heldH ? kStickKeep : kStickPress;
+    return lx < -t ? -1 : lx > t ? 1 : 0;
 }
 
 }  // namespace
@@ -47,8 +56,8 @@ void SettingsMenu::open(const Bindings& current, const std::array<std::string, k
     slotNames_ = slotNames;
     selected_ = 0;
     prevButtons_ = heldButtons;
-    vertical_.reset(verticalOf(heldButtons, ly));
-    horizontal_.reset(horizontalOf(heldButtons, lx));
+    vertical_.reset(verticalOf(heldButtons, lx, ly));
+    horizontal_.reset(horizontalOf(heldButtons, lx, ly));
 }
 
 void SettingsMenu::select(size_t row) { selected_ = row < rowCount() ? row : rowCount() - 1; }
@@ -73,12 +82,12 @@ SettingsMenu::Result SettingsMenu::update(const PadState& pad, uint32_t nowMs) {
     if ((down & kPadY) && selected_ < kBindableCount) bindings_[selected_] = defaultBindings()[selected_];
     const float lx = pad.connected ? pad.lx : 0;
     const float ly = pad.connected ? pad.ly : 0;
-    const int v = verticalOf(buttons, ly);
+    const int v = verticalOf(buttons, lx, ly, vertical_.dir != 0);
     if (vertical_.step(v, nowMs)) {
         const int n = int(rowCount());
         selected_ = size_t((int(selected_) + v + n) % n);
     }
-    const int h = horizontalOf(buttons, lx);
+    const int h = horizontalOf(buttons, lx, ly, horizontal_.dir != 0);
     if (horizontal_.step(h, nowMs) && selected_ < kBindableCount)
         bindings_[selected_] = nextAction(bindings_[selected_], h);
     return Result::None;

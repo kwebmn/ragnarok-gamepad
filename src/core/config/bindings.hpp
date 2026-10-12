@@ -50,6 +50,9 @@ struct Profiles {
 
 // Missing keys fall back to [default], then to defaultBindings(); unknown lines are skipped.
 Profiles parseProfiles(const std::string& text);
+// `onDisk` with one layout put in (charId 0: [default]) and every other one left as it is, so that two
+// clients saving different characters do not erase each other's layouts.
+Profiles withLayout(Profiles onDisk, uint32_t charId, const std::string& name, const Bindings& bindings);
 std::string formatProfiles(const Profiles& profiles);
 
 }  // namespace uapad

@@ -46,8 +46,44 @@ TEST(ctl_walk_stop_note_tells_where) {
     CHECK(!c.walking());
     bool found = false;
     for (const std::string& n : o.notes)
-        found = found || n == "walk stop at (102,100); the server was taking us to (108,100)";
+        found = found || n == "walk stop at (104,100): we are at about (102,100), heading for (108,100)";
     CHECK(found);
+}
+
+TEST(ctl_walk_stop_goes_two_cells_ahead) {
+    Controller c(Config{});
+    WorldState w = world();
+    PadState p = pad();
+    p.lx = 1.0f;
+    c.tick(p, w, view(), 100);
+    c.onClientWalk(Cell{108, 100}, w, 110);  // the client asks for the cell under the walking point
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{108, 100}}, 120);
+    TickOutput o = c.tick(pad(), w, view(), 450);  // released: we think we are at (102,100)
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{104, 100}));  // the server is a step or two on already
+}
+
+TEST(ctl_walk_stop_not_past_the_destination) {
+    Controller c(Config{});
+    WorldState w = world();
+    PadState p = pad();
+    p.lx = 1.0f;
+    c.tick(p, w, view(), 100);
+    c.onClientWalk(Cell{101, 100}, w, 110);
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{101, 100}}, 120);
+    TickOutput o = c.tick(pad(), w, view(), 140);
+    CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{101, 100}));
+}
+
+TEST(ctl_quick_tap_stops_two_cells_out) {
+    Controller c(Config{});
+    WorldState w = world();
+    PadState p = pad();
+    p.lx = 1.0f;
+    c.tick(p, w, view(), 100);
+    c.onClientWalk(Cell{108, 100}, w, 110);  // asked for, but the server has not answered yet
+    TickOutput o = c.tick(pad(), w, view(), 150);
+    CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{102, 100}));
 }
 
 TEST(ctl_walk_deadzone_and_center_press) {
@@ -765,8 +801,8 @@ TEST(ctl_r3_also_stops_a_walk_up) {
     CHECK(!c.approaching());
     CHECK_EQ(o.packets.size(), 2u);
     CHECK_EQ(pid(pkt(o, 0)), 0x0118);
-    CHECK_EQ(pid(pkt(o, 1)), 0x00a7);  // and stop where we are
-    CHECK(decodePos3(pkt(o, 1).data(), 5) == w.selfPos(1300));
+    CHECK_EQ(pid(pkt(o, 1)), 0x00a7);  // and stop: two cells on from (101,100), not behind the server
+    CHECK(decodePos3(pkt(o, 1).data(), 5) == (Cell{103, 100}));
 }
 
 TEST(ctl_right_stick_picks_in_direction) {

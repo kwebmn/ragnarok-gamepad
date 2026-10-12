@@ -24,11 +24,19 @@ constexpr double kRingTurn = 10.0 * kPi / 180.0;
 constexpr uint32_t kMarkAgainMs = 1000;
 constexpr uint32_t kReattackMs = 1000;  // standing still without a hit of ours this long: ask again
 constexpr uint32_t kPickupGiveUpMs = 1000;  // still on the ground a second after we asked: not ours to take
+constexpr int kStopAhead = 2;
 constexpr int kPickupRadius = 10;
 constexpr int kPickupReach = 1;
 
 bool due(const std::optional<uint32_t>& last, uint32_t now, uint32_t interval) {
     return !last || now - *last >= interval;
+}
+
+// Where to stop a walk in progress. Our estimate trails the server by a step or two by the time a stop
+// arrives, and a stop behind the server walks us back: stop two cells on, never past where we were going.
+Cell stopCell(Cell here, Cell heading) {
+    if (cellDistance(here, heading) <= kStopAhead) return heading;
+    return stepsToward(here, Cell{heading.x - here.x, heading.y - here.y}, kStopAhead);
 }
 
 size_t bitIndex(uint16_t button) {
@@ -154,6 +162,7 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
 }
 
 void Controller::onClientWalk(Cell dest, const WorldState& world, uint32_t now) {
+    if (walking_) stickDest_ = dest;
     if (!walking_ || !ringSteadyFromMs_ || int32_t(now - *ringSteadyFromMs_) < 0) return;
     const Cell me = world.selfPos(now);
     camera_.addSample(ringX_, ringY_, dest.x - me.x, dest.y - me.y);
@@ -169,6 +178,7 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
             approach_.reset();
             stopAttacking();  // walking ends a fight; a held A starts it again afterwards
             ringSteadyFromMs_.reset();
+            stickDest_.reset();
         }
         const float radius = cfg_.walkRadius * float(std::min(view.width, view.height));
         const int cx = view.width / 2;
@@ -197,9 +207,12 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
         walking_ = false;
         ringSteadyFromMs_.reset();
         const Cell here = world.selfPos(now);
-        out.packets.push_back(buildWalk(here));  // stop where we are
-        out.notes.push_back("walk stop at " + cellText(here) + "; the server was taking us to " +
-                            cellText(world.selfDest()));
+        const Cell heading = stickDest_ ? *stickDest_ : world.selfDest();
+        const Cell stop = stopCell(here, heading);
+        stickDest_.reset();
+        out.packets.push_back(buildWalk(stop));
+        out.notes.push_back("walk stop at " + cellText(stop) + ": we are at about " + cellText(here) +
+                            ", heading for " + cellText(heading));
     }
 }
 
@@ -401,7 +414,7 @@ void Controller::clearTarget(const WorldState& world, uint32_t now, TickOutput& 
     if (target_ == 0 && !wantAttack_) return;
     out.packets.push_back(buildStopAttack());
     // 0x0118 does not stop a walk up to the target (ours, or the client's after "too far"): stop it too.
-    if (!walking_ && world.selfMoving(now)) out.packets.push_back(buildWalk(world.selfPos(now)));
+    if (!walking_ && world.selfMoving(now)) out.packets.push_back(buildWalk(stopCell(world.selfPos(now), world.selfDest())));
     target_ = 0;
     stopAttacking();
     approach_.reset();

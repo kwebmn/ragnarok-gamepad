@@ -30,12 +30,6 @@ SlotDecision send(Bytes packet, uint32_t newTarget = 0) {
 
 bool listed(const std::vector<uint16_t>& ids, uint16_t id) { return std::find(ids.begin(), ids.end(), id) != ids.end(); }
 
-// The cell `steps` steps from `from` in the direction of the vector `dir` (not zero).
-Cell stepsToward(Cell from, Cell dir, int steps) {
-    const double longest = double(std::max(std::abs(dir.x), std::abs(dir.y)));
-    return Cell{from.x + int(std::lround(steps * dir.x / longest)), from.y + int(std::lround(steps * dir.y / longest))};
-}
-
 // What a learned skill does right now (see decideSlot).
 SlotDecision decideSkill(const SkillInfo& sk, uint16_t lv, const WorldState& world, uint32_t target,
                          uint32_t nearest, const Config& cfg, uint32_t nowMs) {

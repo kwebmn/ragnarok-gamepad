@@ -1,5 +1,8 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -35,6 +38,12 @@ inline int cellDistance(const Cell& a, const Cell& b) {
     const int dx = a.x > b.x ? a.x - b.x : b.x - a.x;
     const int dy = a.y > b.y ? a.y - b.y : b.y - a.y;
     return dx > dy ? dx : dy;
+}
+
+// The cell `steps` steps from `from` in the direction of the vector `dir` (not zero).
+inline Cell stepsToward(const Cell& from, const Cell& dir, int steps) {
+    const double longest = double(std::max(std::abs(dir.x), std::abs(dir.y)));
+    return Cell{from.x + int(std::lround(steps * dir.x / longest)), from.y + int(std::lround(steps * dir.y / longest))};
 }
 
 // 3-byte packed position: WBUFPOS in uAthena src/map/clif.c.

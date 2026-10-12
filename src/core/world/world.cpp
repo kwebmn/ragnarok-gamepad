@@ -70,6 +70,41 @@ std::optional<SkillInfo> WorldState::skill(uint16_t id) const {
     return it->second;
 }
 
+std::optional<SkillInfo> WorldState::skillByName(const std::string& name) const {
+    for (const auto& entry : skills_)
+        if (!name.empty() && entry.second.name == name) return entry.second;
+    return std::nullopt;
+}
+
+const std::string& WorldState::hotkeyNote(int slot) const {
+    static const std::string kNone;
+    if (slot < 0 || slot >= kHotkeySlots) return kNone;
+    return hotkeyNotes_[size_t(slot)];
+}
+
+void WorldState::setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar) {
+    hotkeysKnown_ = true;
+    for (size_t i = 0; i < bar.size(); ++i) {
+        const ClientBarSlot& slot = bar[i];
+        Hotkey key;
+        std::string note;
+        if (slot.kind == ClientBarSlot::Kind::Skill) {
+            if (auto sk = skillByName(slot.name))
+                key = Hotkey{1, sk->id, slot.level};
+            else
+                note = "skill " + slot.name + " from the bar is not in our skill list";
+        } else if (slot.kind == ClientBarSlot::Kind::Item) {
+            auto it = inventory_.find(slot.itemIndex);
+            if (slot.itemIndex != 0 && it != inventory_.end())
+                key = Hotkey{0, it->second.item, 0};
+            else
+                note = "item " + slot.name + " from the bar is not in the inventory";
+        }
+        hotkeys_[i] = key;
+        hotkeyNotes_[i] = note;
+    }
+}
+
 const Hotkey& WorldState::hotkey(int slot) const {
     static const Hotkey kEmpty{};
     if (slot < 0 || slot >= kHotkeySlots) return kEmpty;

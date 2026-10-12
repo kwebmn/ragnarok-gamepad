@@ -1,5 +1,7 @@
 #include "core/proto/s2c_parser.hpp"
 
+#include <cstring>
+
 namespace uapad {
 namespace {
 
@@ -95,8 +97,11 @@ std::optional<Event> parseS2C(const Bytes& p) {
             return EvItemUsed{rd16(d, 2), rd16(d, 4), 0, rd8(d, 6) != 0};
         case 0x010f: {
             EvSkills ev;
-            for (size_t o = 4; o + 37 <= n; o += 37)
-                ev.skills.push_back(SkillInfo{rd16(d, o), rd32(d, o + 2), rd16(d, o + 6), rd16(d, o + 10)});
+            for (size_t o = 4; o + 37 <= n; o += 37) {
+                const char* name = reinterpret_cast<const char*>(d + o + 12);
+                SkillInfo s{rd16(d, o), rd32(d, o + 2), rd16(d, o + 6), rd16(d, o + 10), std::string(name, strnlen(name, 24))};
+                ev.skills.push_back(std::move(s));
+            }
             return ev;
         }
         case 0x010e:

@@ -152,3 +152,34 @@ TEST(world_self_moving) {
     CHECK(w.selfMoving(1500));
     CHECK(!w.selfMoving(1600));  // 4 cells at 150 ms
 }
+
+TEST(world_client_bar) {
+    WorldState w = inGame();
+    SkillInfo ds{46, 1, 10, 9};
+    ds.name = "AC_DOUBLE";
+    w.apply(EvSkills{{ds}}, 0);
+    w.apply(EvInventory{{InvEntry{7, 501, 15, false}}}, 0);
+    CHECK(!w.hotkeysKnown());
+    std::array<ClientBarSlot, kClientBarSlots> bar{};
+    bar[0].kind = ClientBarSlot::Kind::Skill;
+    bar[0].name = "AC_DOUBLE";
+    bar[0].level = 5;
+    bar[1].kind = ClientBarSlot::Kind::Skill;
+    bar[1].name = "HT_BLITZBEAT";  // not learned
+    bar[5].kind = ClientBarSlot::Kind::Item;
+    bar[5].name = "Red Potion";
+    bar[5].itemIndex = 7;
+    bar[6].kind = ClientBarSlot::Kind::Item;
+    bar[6].name = "Fly Wing";  // none left in the inventory
+    w.setClientBar(bar);
+    CHECK(w.hotkeysKnown());
+    CHECK(w.hotkey(0) == (Hotkey{1, 46, 5}));
+    CHECK_EQ(w.hotkey(1).id, 0u);
+    CHECK(w.hotkeyNote(1).find("HT_BLITZBEAT") != std::string::npos);
+    CHECK(w.hotkey(5) == (Hotkey{0, 501, 0}));
+    CHECK_EQ(w.hotkey(6).id, 0u);
+    CHECK(w.hotkeyNote(6).find("Fly Wing") != std::string::npos);
+    CHECK(w.hotkeyNote(2).empty());  // simply empty
+    CHECK(w.skillByName("AC_DOUBLE") && w.skillByName("AC_DOUBLE")->id == 46);
+    CHECK(!w.skillByName("NV_BASIC"));
+}

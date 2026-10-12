@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <unordered_map>
 
 #include "core/proto/events.hpp"
@@ -25,6 +26,20 @@ struct GroundItem {
 };
 
 constexpr int kHotkeySlots = 27;
+constexpr int kClientBarSlots = 9;  // F1-F9 of the first row: what the pad's buttons use
+
+// A hotkey slot as the client itself keeps it. The uaRO client never sends its bar (no 0x02b9 / 0x02ba),
+// so the pad reads it from the client's memory.
+struct ClientBarSlot {
+    enum class Kind { Empty, Skill, Item };
+    Kind kind = Kind::Empty;
+    std::string name;        // Skill: the skill_db name ("AC_DOUBLE"); Item: the client's item name
+    uint16_t level = 0;      // Skill: the level on the bar, 0 = as learned
+    uint16_t itemIndex = 0;  // Item: inventory index of an identified item of that name, 0 = none left
+};
+inline bool operator==(const ClientBarSlot& a, const ClientBarSlot& b) {
+    return a.kind == b.kind && a.name == b.name && a.level == b.level && a.itemIndex == b.itemIndex;
+}
 
 // What the client knows about the map, rebuilt from the map server's packets.
 class WorldState {
@@ -51,7 +66,11 @@ public:
     const std::unordered_map<uint32_t, GroundItem>& groundItems() const { return items_; }
     std::optional<InvEntry> findUsable(uint16_t itemId) const;
     std::optional<SkillInfo> skill(uint16_t id) const;
+    std::optional<SkillInfo> skillByName(const std::string& name) const;
     const Hotkey& hotkey(int slot) const;
+    // Why a slot from the client's bar could not be used (an unknown skill, no item left); empty otherwise.
+    const std::string& hotkeyNote(int slot) const;
+    void setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar);
     // False until the server sends 0x02b9; uAthena only does with HOTKEY_SAVING enabled.
     bool hotkeysKnown() const { return hotkeysKnown_; }
 
@@ -75,6 +94,7 @@ private:
     std::unordered_map<uint16_t, InvEntry> inventory_;  // by protocol index
     std::unordered_map<uint16_t, SkillInfo> skills_;
     std::array<Hotkey, kHotkeySlots> hotkeys_{};
+    std::array<std::string, kHotkeySlots> hotkeyNotes_{};
     bool hotkeysKnown_ = false;
 };
 

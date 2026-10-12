@@ -190,6 +190,25 @@ size_t Session::appendForClient(SocketId s, uint8_t* buf, size_t n, size_t cap, 
     return added;
 }
 
+void Session::setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar) {
+    world_.setClientBar(bar);
+    if (loggedBar_ && *loggedBar_ == bar) return;
+    loggedBar_ = bar;
+    std::string line;
+    for (size_t i = 0; i < bar.size(); ++i) {
+        const ClientBarSlot& s = bar[i];
+        if (s.kind == ClientBarSlot::Kind::Empty) continue;
+        line += line.empty() ? " " : ", ";
+        line += "F" + std::to_string(i + 1);
+        if (s.kind == ClientBarSlot::Kind::Skill)
+            line += " skill " + s.name + " lv " + std::to_string(s.level);
+        else
+            line += " item " + s.name +
+                    (s.itemIndex ? " (index " + std::to_string(s.itemIndex) + ")" : std::string(" (none left)"));
+    }
+    log_.push_back("hotkey bar from the client:" + (line.empty() ? std::string(" empty") : line));
+}
+
 void Session::markInjectBroken() {
     injectOk_ = false;
     queue_.clear();

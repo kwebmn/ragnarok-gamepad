@@ -22,6 +22,7 @@ struct SkillInfo {
     uint32_t inf = 0;  // uAthena skill_get_inf bits: 1 enemy, 2 ground, 4 self, 16 support
     uint16_t lv = 0;
     uint16_t range = 0;
+    std::string name;  // skill_db name, e.g. "AC_DOUBLE" (0x010f only)
 };
 
 struct EvAuthOk { Cell pos; };                       // 0x0073

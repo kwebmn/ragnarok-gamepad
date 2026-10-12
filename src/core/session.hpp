@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -40,6 +41,8 @@ public:
     // about to receive on `s` in a buffer of `cap` bytes: only on the map socket, only while the server
     // stream is understood and stands at a packet boundary, only whole packets. Returns the bytes added.
     size_t appendForClient(SocketId s, uint8_t* buf, size_t n, size_t cap, uint32_t nowMs);
+    // F1-F9 as read from the client's memory (it never sends its bar). Logs the bar when it changes.
+    void setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar);
 
     SocketId mapSocket() const { return mapSocket_; }
     const WorldState& world() const { return world_; }
@@ -63,6 +66,7 @@ private:
     bool mark_ = true;  // [aim] mark
     bool padWalking_ = false;
     std::optional<uint32_t> walkStopMs_;  // the stick walk ended: what follows is logged for a moment
+    std::optional<std::array<ClientBarSlot, kClientBarSlots>> loggedBar_;
     std::unordered_map<SocketId, Conn> conns_;
     SocketId mapSocket_ = 0;
     bool downOk_ = false;

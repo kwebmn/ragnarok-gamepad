@@ -376,3 +376,29 @@ TEST(session_logs_hotkey_changes) {
     CHECK(lines.size() == 2 && lines[0] == "hotkey bar: F1 = skill 46 lv 10");
     CHECK(lines.size() == 2 && lines[1] == "hotkey bar: row 2 F1 = skill 46 lv 10 (the pad uses row 1 only)");
 }
+
+TEST(session_logs_the_client_bar_when_it_changes) {
+    Session s{Config{}};
+    connect(s);
+    s.takeLog();
+    std::array<ClientBarSlot, kClientBarSlots> bar{};
+    s.setClientBar(bar);
+    std::vector<std::string> lines = s.takeLog();
+    CHECK(lines.size() == 1 && lines[0] == "hotkey bar from the client: empty");
+    bar[0].kind = ClientBarSlot::Kind::Skill;
+    bar[0].name = "AC_DOUBLE";
+    bar[0].level = 10;
+    bar[5].kind = ClientBarSlot::Kind::Item;
+    bar[5].name = "Red Potion";
+    bar[5].itemIndex = 7;
+    s.setClientBar(bar);
+    lines = s.takeLog();
+    CHECK(lines.size() == 1 && lines[0] == "hotkey bar from the client: F1 skill AC_DOUBLE lv 10, F6 item Red Potion (index 7)");
+    s.setClientBar(bar);  // read again, unchanged: quiet
+    CHECK(s.takeLog().empty());
+    bar[5].itemIndex = 0;  // used up
+    s.setClientBar(bar);
+    lines = s.takeLog();
+    CHECK(lines.size() == 1 && lines[0] == "hotkey bar from the client: F1 skill AC_DOUBLE lv 10, F6 item Red Potion (none left)");
+    CHECK(s.world().hotkeysKnown());
+}

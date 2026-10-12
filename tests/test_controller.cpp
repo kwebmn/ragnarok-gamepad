@@ -649,6 +649,18 @@ TEST(ctl_empty_slot_hint_when_server_sent_no_bar) {
     CHECK(!o.notes.empty() && o.notes.back().find("hotkey bar") == std::string::npos);
 }
 
+TEST(ctl_slot_denial_says_why_for_the_client_bar) {
+    Controller c(Config{});
+    WorldState w = world();
+    std::array<ClientBarSlot, kClientBarSlots> bar{};
+    bar[0].kind = ClientBarSlot::Kind::Skill;
+    bar[0].name = "AC_DOUBLE";  // on the client's bar, but not in the skill list the server sent
+    w.setClientBar(bar);
+    TickOutput o = c.tick(pad(kPadX), w, view(), 1000);
+    CHECK(o.rumble == Rumble::Denied);
+    CHECK(!o.notes.empty() && o.notes.back().find("AC_DOUBLE") != std::string::npos);
+}
+
 TEST(ctl_held_empty_slot_stays_quiet) {
     Controller c(Config{});
     WorldState w = slotWorld();

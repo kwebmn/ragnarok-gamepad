@@ -1,3 +1,5 @@
+#include <cstring>
+
 #include "core/proto/packet_tables.hpp"
 #include "core/proto/s2c_build.hpp"
 #include "core/proto/s2c_parser.hpp"
@@ -260,4 +262,17 @@ TEST(s2c_build_emotion) {
     CHECK_EQ(rd16(e.data(), 0), 0x00c0);
     CHECK_EQ(rd32(e.data(), 2), 110000123u);
     CHECK_EQ(e[6], 0);
+}
+
+TEST(s2c_skill_names) {
+    Bytes sk = pkt(0x010f, 4 + 2 * 37);
+    wr16(sk, 2, 4 + 2 * 37);
+    wr16(sk, 4, 46);
+    std::memcpy(sk.data() + 16, "AC_DOUBLE", 9);
+    wr16(sk, 41, 5);
+    std::memcpy(sk.data() + 53, "ABCDEFGHIJKLMNOPQRSTUVWX", 24);  // all 24 bytes used, no terminator
+    auto e = parseS2C(sk);
+    auto* sl = as<EvSkills>(e);
+    CHECK(sl && sl->skills.size() == 2 && sl->skills[0].name == "AC_DOUBLE");
+    CHECK(sl && sl->skills.size() == 2 && sl->skills[1].name == "ABCDEFGHIJKLMNOPQRSTUVWX");
 }

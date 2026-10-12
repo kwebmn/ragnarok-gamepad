@@ -309,11 +309,13 @@ void Controller::attack(const WorldState& world, uint32_t now, TickOutput& out) 
 void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
     const Hotkey& key = world.hotkey(slot);
     if (key.id == 0) {
-        if (!repeat)
+        if (repeat) return;
+        const std::string& why = world.hotkeyNote(slot);
+        if (!why.empty())
+            deny(out, "F" + std::to_string(slot + 1) + ": " + why);
+        else
             deny(out, "slot F" + std::to_string(slot + 1) + " is empty" +
-                          (world.hotkeysKnown() ? std::string()
-                                                : std::string(" (the server sent no hotkey bar: drag the skill onto "
-                                                              "the bar again so the pad can see it)")));
+                          (world.hotkeysKnown() ? std::string() : std::string(" (the pad could not read the hotkey bar)")));
         return;
     }
     std::optional<uint32_t>& last = lastSlotMs_[size_t(slot)];

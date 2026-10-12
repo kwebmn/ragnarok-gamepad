@@ -16,6 +16,7 @@
 #include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
 #include "core/version.hpp"
+#include "win/client_bar.hpp"
 #include "win/hooks.hpp"
 #include "win/log.hpp"
 #include "win/xinput_pad.hpp"
@@ -43,6 +44,10 @@ struct State {
     bool checkedPointers = false;
     bool loggedBufferRead = false;
     bool loggedMark = false;
+    bool barSupported = false;  // the client's hotkey bar can be read from its memory
+    bool loggedBarFail = false;
+    DWORD lastBarMs = 0;
+    bool barRead = false;
     bool realLmb = false;      // the real left button as DirectInput last reported it
     bool realClicked = false;  // it went down since the last tick
     bool loggedConnected = false;
@@ -210,6 +215,18 @@ void tick() {
         s.lastPointerCheckMs = now;
         s.pointersHooked = hooks::patchClientPointers();
     }
+    // The client never sends its hotkey bar: look at it in its memory now and then.
+    if (s.barSupported && (!s.barRead || now - s.lastBarMs >= 250)) {
+        s.barRead = true;
+        s.lastBarMs = now;
+        std::array<ClientBarSlot, kClientBarSlots> bar;
+        if (clientbar::read(bar)) {
+            s.session->setClientBar(bar);
+        } else if (!s.loggedBarFail) {
+            s.loggedBarFail = true;
+            LOG_INFO("could not read the client's hotkey bar this time");
+        }
+    }
     const ViewInfo view = currentView();
     if (view.focused != s.lastFocused) {  // the real mouse may have moved the client's cursor meanwhile
         s.lastFocused = view.focused;
@@ -242,6 +259,9 @@ void init() {
         s.session = std::make_unique<Session>(s.cfg);
         if (!s.cfg.enabled) LOG_INFO("starts switched off ([general] enabled = 0); press Back to switch on");
         hooks::install();
+        s.barSupported = clientbar::supported();
+        LOG_INFO(s.barSupported ? "hotkey bar: read from the client's memory"
+                                : "hotkey bar: unknown client build; slots only from the server's 0x02b9 / 0x02ba");
         if (s.pad.load())
             LOG_INFO("XInput: %s", s.pad.dllName());
         else

@@ -167,3 +167,28 @@ TEST(session_logs_hotkey_bar_arrival) {
         if (line.find("hotkey bar") != std::string::npos && line.find("1 filled") != std::string::npos) found = true;
     CHECK(found);
 }
+
+TEST(session_unobserved_client_send_stops_injection) {
+    Session s{Config{}};
+    connect(s);
+    CHECK(s.canInject());
+    s.onUnobserved(kLogin, Direction::ClientToServer);  // some other socket: no effect
+    CHECK(s.canInject());
+    s.onUnobserved(kMap, Direction::ClientToServer);  // bytes left that we never saw: no boundary is known
+    CHECK(!s.canInject());
+    CHECK(!s.takeLog().empty());
+}
+
+TEST(session_unobserved_server_data_stops_parsing) {
+    Session s{Config{}};
+    connect(s);
+    s.onUnobserved(kMap, Direction::ServerToClient);
+    CHECK(!s.canInject());
+    Bytes mob(54, 0);
+    wr16(mob, 0, 0x0078);
+    wr32(mob, 2, 110000002);
+    wr16(mob, 14, 1002);
+    encodePos3(mob, 46, Cell{103, 100}, 0);
+    s.onServerData(kMap, mob.data(), mob.size(), 20);
+    CHECK_EQ(s.world().actors().size(), 1u);  // the stream is no longer trusted: nothing new is parsed
+}

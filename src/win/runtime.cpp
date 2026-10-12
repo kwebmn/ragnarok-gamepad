@@ -1,6 +1,7 @@
 #include "win/runtime.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <exception>
 #include <fstream>
 #include <memory>
@@ -44,6 +45,17 @@ struct State {
 State& S() {
     static State s;
     return s;
+}
+
+// Hooks running off the game thread only record that the map socket carried traffic we could not
+// parse; the game thread turns that into Session::onUnobserved on its next tick.
+std::atomic<uintptr_t> g_mapSocket{0};
+std::atomic<bool> g_unseenUp{false};
+std::atomic<bool> g_unseenDown{false};
+
+void noteUnseen(SOCKET sock, bool up) {
+    if (uintptr_t(sock) != g_mapSocket.load()) return;
+    (up ? g_unseenUp : g_unseenDown).store(true);
 }
 
 std::string exeDir() {
@@ -171,6 +183,8 @@ void tick() {
     if (s.ticked && now - s.lastTickMs < 5) return;  // the client may poll several times per frame
     s.ticked = true;
     s.lastTickMs = now;
+    if (g_unseenUp.exchange(false)) s.session->onUnobserved(s.session->mapSocket(), Direction::ClientToServer);
+    if (g_unseenDown.exchange(false)) s.session->onUnobserved(s.session->mapSocket(), Direction::ServerToClient);
     const PadState pad = s.pad.poll();
     logPad(pad);
     const TickOutput out = s.session->tick(pad, currentView(), now);
@@ -180,6 +194,7 @@ void tick() {
     s.pad.update(now);
     applyMouse(out.mouse);
     flushPackets();
+    g_mapSocket.store(s.session->mapSocket());
     logDiagnostics(now);
 }
 
@@ -274,8 +289,12 @@ void onRecv(SOCKET sock, const char* buf, int n) {
     State& s = S();
     ++s.nRecv;
     guarded("recv", [&] {
-        if (n > 0 && onGameThread())
-            s.session->onServerData(uintptr_t(sock), reinterpret_cast<const uint8_t*>(buf), size_t(n), GetTickCount());
+        if (n <= 0) return;
+        if (!onGameThread()) {
+            noteUnseen(sock, false);
+            return;
+        }
+        s.session->onServerData(uintptr_t(sock), reinterpret_cast<const uint8_t*>(buf), size_t(n), GetTickCount());
     });
 }
 
@@ -283,8 +302,13 @@ void onSent(SOCKET sock, const char* buf, int n) {
     State& s = S();
     ++s.nSend;
     guarded("send", [&] {
-        if (n <= 0 || !onGameThread()) return;
+        if (n <= 0) return;
+        if (!onGameThread()) {
+            noteUnseen(sock, true);
+            return;
+        }
         s.session->onClientSent(uintptr_t(sock), reinterpret_cast<const uint8_t*>(buf), size_t(n), GetTickCount());
+        g_mapSocket.store(s.session->mapSocket());
         flushPackets();
     });
 }
@@ -300,8 +324,14 @@ void onSentBuffers(SOCKET sock, LPWSABUF bufs, DWORD count, DWORD sent) {
 void onClose(SOCKET sock) {
     State& s = S();
     guarded("close", [&] {
-        if (onGameThread()) s.session->onClosed(uintptr_t(sock));
+        if (!onGameThread()) return;
+        s.session->onClosed(uintptr_t(sock));
+        g_mapSocket.store(s.session->mapSocket());
     });
+}
+
+void onOverlappedSend(SOCKET sock) {
+    guarded("overlapped send", [&] { noteUnseen(sock, true); });
 }
 
 }  // namespace uapad::runtime

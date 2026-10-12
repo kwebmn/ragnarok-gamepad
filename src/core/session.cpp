@@ -96,6 +96,18 @@ void Session::onClosed(SocketId s) {
     log_.push_back("map server connection closed");
 }
 
+void Session::onUnobserved(SocketId s, Direction dir) {
+    if (s == 0 || s != mapSocket_) return;
+    if (dir == Direction::ClientToServer) {
+        if (injectOk_) log_.push_back("the client sent data the pad could not see; pad requests are off until reconnect");
+        injectOk_ = false;
+        queue_.clear();
+    } else {
+        if (downOk_) log_.push_back("the client received data the pad could not see; pad requests are off until reconnect");
+        downOk_ = false;
+    }
+}
+
 TickOutput Session::tick(const PadState& pad, const ViewInfo& view, uint32_t nowMs) {
     TickOutput out = controller_.tick(pad, world_, view, nowMs);
     if (out.packets.empty()) return out;

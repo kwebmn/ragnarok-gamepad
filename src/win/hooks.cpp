@@ -38,7 +38,10 @@ int WSAAPI h_send(SOCKET s, const char* buf, int len, int flags) {
 int WSAAPI h_wsasend(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD sent, DWORD flags, LPWSAOVERLAPPED ov,
                      LPWSAOVERLAPPED_COMPLETION_ROUTINE done) {
     const int r = o_wsasend(s, bufs, count, sent, flags, ov, done);
-    if (r == 0 && sent && !ov) runtime::onSentBuffers(s, bufs, count, *sent);
+    if (ov)
+        runtime::onOverlappedSend(s);
+    else if (r == 0 && sent)
+        runtime::onSentBuffers(s, bufs, count, *sent);
     return r;
 }
 

@@ -25,6 +25,9 @@ public:
     void onClientSent(SocketId s, const uint8_t* data, size_t n, uint32_t nowMs);  // bytes really sent
     void onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t nowMs);  // bytes really received
     void onClosed(SocketId s);
+    // Traffic on `s` that the hooks could not see (overlapped WSASend, a call from another thread).
+    // On the map socket it ends trust in that direction until the next connection.
+    void onUnobserved(SocketId s, Direction dir);
 
     // Runs the controller. Its requests are queued for injection (and still listed in the output).
     TickOutput tick(const PadState& pad, const ViewInfo& view, uint32_t nowMs);

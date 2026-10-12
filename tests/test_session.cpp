@@ -378,7 +378,7 @@ TEST(session_logs_hotkey_changes) {
     const std::vector<std::string> lines = s.takeLog();
     CHECK_EQ(lines.size(), 2u);
     CHECK(lines.size() == 2 && lines[0] == "hotkey bar: F1 = skill 46 lv 10");
-    CHECK(lines.size() == 2 && lines[1] == "hotkey bar: row 2 F1 = skill 46 lv 10 (the pad uses row 1 only)");
+    CHECK(lines.size() == 2 && lines[1] == "hotkey bar: row 2 F1 = skill 46 lv 10");
 }
 
 TEST(session_logs_the_client_bar_when_it_changes) {

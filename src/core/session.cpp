@@ -81,7 +81,7 @@ void Session::feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs) {
             const int row = change->index / 9 + 1;
             const std::string slot = "F" + std::to_string(change->index % 9 + 1);
             log_.push_back("hotkey bar: " + (row == 1 ? slot : "row " + std::to_string(row) + " " + slot) + " = " +
-                           hotkeyText(change->key) + (row == 1 ? "" : " (the pad uses row 1 only)"));
+                           hotkeyText(change->key));
         } else if (auto dest = parseWalkRequest(p)) {
             if (justStoppedWalking(nowMs))
                 log_.push_back("after the stick: the client asks to walk to " + cellText(*dest) + "; we are at " +

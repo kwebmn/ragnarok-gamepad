@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace uapad::clientbar {
 namespace {
@@ -80,22 +82,35 @@ bool matches(const uint8_t* sig, size_t n, uintptr_t at) {
     return readable(at, n) && std::memcmp(reinterpret_cast<const void*>(at), sig, n) == 0;
 }
 
-// The inventory index of the first identified item called `name`, as the client resolves a bar item; 0: none.
-uint16_t findItem(const std::string& name) {
+// One pass over the client's inventory list: each identified item name with the inventory index of its
+// first entry, as the client resolves a bar item. One readability check per node keeps this cheap.
+std::vector<std::pair<std::string, uint16_t>> inventoryNames() {
+    std::vector<std::pair<std::string, uint16_t>> names;
     uint32_t head = 0;
     uint32_t node = 0;
-    if (!load(kInventory, head) || head == 0 || !load(head, node)) return 0;
+    if (!load(kInventory, head) || head == 0 || !load(head, node)) return names;
     for (int i = 0; i < kMaxItems && node != 0 && node != head; ++i) {
+        uint8_t raw[kNodeIdentified + 4];
+        if (!readable(node, sizeof raw)) break;
+        std::memcpy(raw, reinterpret_cast<const void*>(uintptr_t(node)), sizeof raw);
+        uint32_t next = 0;
         int32_t index = 0;
-        uint8_t identified = 0;
-        std::string itemName;
-        if (!load(node + kNodeIndex, index) || !load(node + kNodeIdentified, identified) ||
-            !loadString(node + kNodeName, itemName))
-            return 0;
-        if (identified && itemName == name && index > 0 && index < 0x10000) return uint16_t(index);
-        if (!load(node, node)) return 0;
+        uint32_t namePtr = 0;
+        uint32_t nameLen = 0;
+        std::memcpy(&next, raw, 4);
+        std::memcpy(&index, raw + kNodeIndex, 4);
+        std::memcpy(&namePtr, raw + kNodeName + 4, 4);
+        std::memcpy(&nameLen, raw + kNodeName + 8, 4);
+        if (raw[kNodeIdentified] && index > 0 && index < 0x10000 && namePtr && nameLen && nameLen <= kMaxName &&
+            readable(namePtr, nameLen)) {
+            std::string name(reinterpret_cast<const char*>(uintptr_t(namePtr)), nameLen);
+            bool seen = false;
+            for (const auto& n : names) seen = seen || n.first == name;
+            if (!seen) names.emplace_back(std::move(name), uint16_t(index));
+        }
+        node = next;
     }
-    return 0;
+    return names;
 }
 
 }  // namespace
@@ -106,6 +121,8 @@ bool supported() {
 }
 
 bool read(std::array<ClientBarSlot, kClientBarSlots>& out) {
+    std::vector<std::pair<std::string, uint16_t>> items;
+    bool itemsRead = false;
     for (size_t j = 0; j < out.size(); ++j) {
         std::string name;
         int32_t level = 0;
@@ -117,7 +134,12 @@ bool read(std::array<ClientBarSlot, kClientBarSlots>& out) {
             slot.level = level > 0 && level < 100 ? uint16_t(level) : 0;
         } else if (!name.empty() && name != "nothing") {
             slot.kind = ClientBarSlot::Kind::Item;
-            slot.itemIndex = findItem(name);  // matched on the client's own spelling
+            if (!itemsRead) {
+                items = inventoryNames();
+                itemsRead = true;
+            }
+            for (const auto& item : items)  // matched on the client's own spelling
+                if (item.first == name) slot.itemIndex = item.second;
             slot.name = toUtf8(name);
         }
         out[j] = slot;

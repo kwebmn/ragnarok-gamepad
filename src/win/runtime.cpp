@@ -48,6 +48,7 @@ struct State {
     bool loggedBufferRead = false;
     bool loggedMark = false;
     SettingsMenu menu;          // behind Start
+    bool swallowMouse = false;  // mouse buttons are the menu's: while it is open and until let go after
     uint16_t prevPadButtons = 0;
     std::string bindsPath;      // uaro-pad-binds.ini
     bool barSupported = false;  // the client's hotkey bar can be read from its memory
@@ -229,23 +230,30 @@ overlay::View menuView() {
         v.actions.push_back(widen(row.action, CP_UTF8));
     }
     v.selected = s.menu.selected();
-    v.help = L"↑↓ выбрать    ←→ изменить    A сохранить    B отмена    Y по умолчанию";
+    v.help = L"↑↓ выбрать    ←→ изменить    Y — по умолчанию\nA — сохранить    B — отмена    Start — сохранить";
     return v;
 }
 
-void saveLayouts() {
+// Writes this character's layout into uaro-pad-binds.ini. The file is read again first: another client may
+// have saved its own character meanwhile, and that must survive.
+bool saveLayouts() {
     State& s = S();
+    const uint32_t id = s.session->charId();
+    const Profiles& mine = s.session->profiles();
+    const Bindings saved = id ? mine.forCharacter(id) : mine.fallback;
+    const Profiles merged = withLayout(parseProfiles(readFile(s.bindsPath)), id, s.session->charName(), saved);
     const std::string tmp = s.bindsPath + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        f << formatProfiles(s.session->profiles());
-        if (!f) {
-            LOG_ERROR("could not write %s", tmp.c_str());
-            return;
-        }
+    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+    f << formatProfiles(merged);
+    f.close();
+    if (!f || !MoveFileExA(tmp.c_str(), s.bindsPath.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        LOG_ERROR("could not save %s (error %lu); the layout works until the client closes",
+                  s.bindsPath.c_str(), (unsigned long)GetLastError());
+        DeleteFileA(tmp.c_str());
+        return false;
     }
-    if (!MoveFileExA(tmp.c_str(), s.bindsPath.c_str(), MOVEFILE_REPLACE_EXISTING))
-        LOG_ERROR("could not replace %s (error %lu)", s.bindsPath.c_str(), (unsigned long)GetLastError());
+    s.session->setProfiles(merged);  // with whatever other clients saved
+    return true;
 }
 
 // The settings menu behind Start. True while the menu had the pad this tick (the tick it closes included,
@@ -285,7 +293,7 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
     }
     if (result == SettingsMenu::Result::Save) {
         s.session->saveBindings(s.menu.bindings());
-        saveLayouts();
+        if (!saveLayouts() && s.cfg.rumble) s.pad.rumble(Rumble::Denied, now);
     }
     if (result != SettingsMenu::Result::None) {
         s.menu.close();
@@ -293,7 +301,10 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
         LOG_INFO(result == SettingsMenu::Result::Save ? "settings saved" : "settings closed without saving");
         return true;
     }
-    overlay::show(s.hwnd, menuView());
+    if (!overlay::show(s.hwnd, menuView())) {
+        s.menu.close();
+        LOG_ERROR("could not create the settings window");
+    }
     return true;
 }
 
@@ -398,9 +409,17 @@ void onMouseState(DWORD cb, LPVOID data) {
         auto* st = static_cast<DIMOUSESTATE*>(data);
         // The device's own button, before we put the virtual one in: a click means the player took over.
         const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;
-        if (realLmb && !s.realLmb) s.realClicked = true;
+        const bool anyButton = ((st->rgbButtons[0] | st->rgbButtons[1] | st->rgbButtons[2] | st->rgbButtons[3]) & 0x80) != 0;
+        // Clicks are the menu's while it is open, and so is the click that closed it until the button is let go.
+        if (s.menu.isOpen())
+            s.swallowMouse = true;
+        else if (s.swallowMouse && !anyButton)
+            s.swallowMouse = false;
+        if (s.swallowMouse)
+            std::memset(st->rgbButtons, 0, sizeof st->rgbButtons);
+        else if (realLmb && !s.realLmb)
+            s.realClicked = true;
         s.realLmb = realLmb;
-        if (s.menu.isOpen()) std::memset(st->rgbButtons, 0, sizeof st->rgbButtons);  // clicks are the menu's
         if (!s.cfg.mouseFreedom && !s.mouse.active) {
             s.bridge.reset();  // the real mouse moves the client's cursor now; resync before driving it again
             return;

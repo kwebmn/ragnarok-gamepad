@@ -14,7 +14,7 @@ struct View {
     std::vector<std::wstring> buttons;  // per row; empty for the "reset everything" row
     std::vector<std::wstring> actions;
     size_t selected = 0;
-    std::wstring help;
+    std::wstring help;  // may hold a line break
     bool operator==(const View& o) const {
         return title == o.title && buttons == o.buttons && actions == o.actions && selected == o.selected && help == o.help;
     }
@@ -27,7 +27,8 @@ struct MouseEvent {
 };
 
 // Shows the window (created on first use) or refreshes it, centred over `game`'s client area.
-void show(HWND game, const View& view);
+// False when the window cannot be created.
+bool show(HWND game, const View& view);
 void hide();
 // Clicks on the window since the last call.
 std::vector<MouseEvent> takeClicks();

@@ -8,7 +8,7 @@ namespace {
 constexpr int kWidth = 560;
 constexpr int kHeader = 54;
 constexpr int kRow = 32;
-constexpr int kFooter = 96;
+constexpr int kFooter = 104;
 constexpr int kButtonColumn = 24;
 constexpr int kActionColumn = 190;
 constexpr int kArrow = 28;  // the clickable ◄ / ► boxes at both ends of the action column
@@ -26,11 +26,13 @@ HFONT g_font = nullptr;
 HFONT g_bold = nullptr;
 RECT g_placed{};       // where the window was last put
 int g_cursorShows = 0;  // ShowCursor(TRUE) calls to undo when the menu goes away
+bool g_shown = false;   // the menu wants the window on screen (the system may hide it with the game)
+bool g_broken = false;  // creating the window failed once: do not retry every frame
 
 int heightFor(const View& v) { return kHeader + int(v.actions.size()) * kRow + kFooter; }
 
 RECT saveBox(const View& v) {
-    const int y = kHeader + int(v.actions.size()) * kRow + 46;
+    const int y = kHeader + int(v.actions.size()) * kRow + 60;
     return RECT{kWidth - 260, y, kWidth - 140, y + 34};
 }
 
@@ -91,7 +93,9 @@ void paint(HWND hwnd) {
              DT_CENTER | DT_VCENTER);
     }
     const int footer = kHeader + int(g_view.actions.size()) * kRow;
-    text(dc, g_view.help, RECT{kButtonColumn, footer + 6, kWidth - 16, footer + 40}, kDim, DT_LEFT | DT_VCENTER);
+    RECT help{kButtonColumn, footer + 6, kWidth - 16, footer + 54};
+    SetTextColor(dc, kDim);
+    DrawTextW(dc, g_view.help.c_str(), int(g_view.help.size()), &help, DT_LEFT | DT_NOPREFIX | DT_WORDBREAK);
     const RECT save = saveBox(g_view);
     const RECT cancel = cancelBox(g_view);
     fill(dc, save, kPick);
@@ -144,6 +148,9 @@ LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SETCURSOR:
             SetCursor(LoadCursor(nullptr, IDC_ARROW));
             return TRUE;
+        case WM_SHOWWINDOW:
+            if (wp && lp == SW_PARENTOPENING && !g_shown) return 0;  // the game was restored: a closed menu stays closed
+            return DefWindowProcW(hwnd, msg, wp, lp);
         case WM_LBUTTONDOWN:
             click(short(LOWORD(lp)), short(HIWORD(lp)));
             return 0;
@@ -171,10 +178,12 @@ bool create(HWND game) {
         if (!RegisterClassExW(&wc)) return false;
         registered = true;
     }
-    g_font = CreateFontW(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                         CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-    g_bold = CreateFontW(-21, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                         CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    if (!g_font)
+        g_font = CreateFontW(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    if (!g_bold)
+        g_bold = CreateFontW(-21, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     g_window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, L"uaRoPadMenu", L"uaRO Pad",
                                WS_POPUP, 0, 0, kWidth, 200, game, nullptr, module(), nullptr);
     if (!g_window) return false;
@@ -184,37 +193,47 @@ bool create(HWND game) {
 
 }  // namespace
 
-void show(HWND game, const View& view) {
-    if (!g_window && !create(game)) return;
+bool show(HWND game, const View& view) {
+    if (g_broken) return false;
+    if (!g_window && !create(game)) {
+        g_broken = true;
+        return false;
+    }
     RECT client{};
     GetClientRect(game, &client);
     POINT centre{(client.right - client.left) / 2, (client.bottom - client.top) / 2};
     ClientToScreen(game, &centre);
     const int h = heightFor(view);
     const RECT place{centre.x - kWidth / 2, centre.y - h / 2, centre.x - kWidth / 2 + kWidth, centre.y - h / 2 + h};
-    const bool hidden = !IsWindowVisible(g_window);
+    const bool opening = !g_shown;
+    const bool hidden = opening || !IsWindowVisible(g_window);
     const bool changed = hidden || !(view == g_view);
     g_view = view;
-    if (hidden || !EqualRect(&place, &g_placed)) {  // shown or the game window moved
-        g_placed = place;
-        SetWindowPos(g_window, HWND_TOP, place.left, place.top, kWidth, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    }
-    if (hidden) {  // the game may hide the Windows cursor with ShowCursor(FALSE): the menu needs one
+    if (opening) {
+        g_shown = true;
+        g_clicks.clear();  // nothing from an earlier time the menu was open
+        // The game may hide the Windows cursor with ShowCursor(FALSE): the menu needs one.
         g_cursorShows = 0;
         while (g_cursorShows < 50 && ShowCursor(TRUE) < 0) ++g_cursorShows;
         if (g_cursorShows < 50) ++g_cursorShows;  // the call that reached zero counts too
     }
+    if (hidden || !EqualRect(&place, &g_placed)) {  // opened, hidden by the system, or the game window moved
+        g_placed = place;
+        SetWindowPos(g_window, HWND_TOP, place.left, place.top, kWidth, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
     if (changed) InvalidateRect(g_window, nullptr, FALSE);
+    return true;
 }
 
 void hide() {
-    if (g_window && IsWindowVisible(g_window)) {
-        ShowWindow(g_window, SW_HIDE);
+    if (g_window) ShowWindow(g_window, SW_HIDE);
+    if (g_shown) {
         while (g_cursorShows > 0) {  // back to the game's own cursor count
             ShowCursor(FALSE);
             --g_cursorShows;
         }
     }
+    g_shown = false;
     g_clicks.clear();
 }
 

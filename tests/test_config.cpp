@@ -78,3 +78,50 @@ TEST(config_v2_keys) {
     CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 9000\n").repeatMs, 250);
     CHECK_EQ(parseConfig("[skills]\nrepeat_ms = -5\n").repeatMs, 250);
 }
+
+TEST(config_04_defaults) {
+    const Config c = parseConfig("");
+    CHECK(c.lang == Lang::En);
+    CHECK(!c.mouseLock);
+    CHECK(!c.focusClick);  // the click that activates the window stays out of the game
+    CHECK(c.mouseKeys == (std::array<int, 3>{0, 0, 0}));
+    CHECK(!c.borderless);
+    CHECK(c.position.kind == WindowPlacement::Kind::Center);
+    CHECK_EQ(c.backgroundSleepMs, 10);
+}
+
+TEST(config_04_keys) {
+    const Config c = parseConfig(
+        "[general]\nlanguage = uk\n"
+        "[mouse]\nlock = 1\nfocus_click = 1\nmiddle = F3\nbutton4 = f1\nbutton5 = none\n"
+        "[window]\nborderless = 1\nposition = -1920, 40\nbackground_sleep_ms = 25\n");
+    CHECK(c.lang == Lang::Uk);
+    CHECK(c.mouseLock);
+    CHECK(c.focusClick);
+    CHECK(c.mouseKeys == (std::array<int, 3>{3, 1, 0}));
+    CHECK(c.borderless);
+    CHECK(c.position.kind == WindowPlacement::Kind::At && c.position.x == -1920 && c.position.y == 40);
+    CHECK_EQ(c.backgroundSleepMs, 25);
+    CHECK(parseConfig("[window]\nposition = keep\n").position.kind == WindowPlacement::Kind::Keep);
+    CHECK(parseConfig("[window]\nbackground_sleep_ms = 0\n").backgroundSleepMs == 0);
+}
+
+TEST(config_04_bad_values_keep_defaults) {
+    const Config c = parseConfig(
+        "[general]\nlanguage = de\n"
+        "[mouse]\nmiddle = F10\nbutton4 = G1\nbutton5 = F0\n"
+        "[window]\nposition = 10\nbackground_sleep_ms = 101\n");
+    CHECK(c.lang == Lang::En);
+    CHECK(c.mouseKeys == (std::array<int, 3>{0, 0, 0}));
+    CHECK(c.position.kind == WindowPlacement::Kind::Center);
+    CHECK_EQ(c.backgroundSleepMs, 10);
+    CHECK(parseConfig("[window]\nposition = a,b\n").position.kind == WindowPlacement::Kind::Center);
+}
+
+TEST(config_function_key_tokens) {
+    CHECK(fKeyToken(0) == "none");
+    CHECK(fKeyToken(9) == "F9");
+    CHECK(parseFKey("F5") && *parseFKey("F5") == 5);
+    CHECK(parseFKey(" none ") && *parseFKey(" none ") == 0);
+    CHECK(!parseFKey("F10"));
+}

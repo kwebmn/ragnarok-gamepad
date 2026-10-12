@@ -1,6 +1,7 @@
 #include "core/config/config.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <sstream>
 
@@ -33,6 +34,13 @@ void setBool(const std::string& v, bool& out) {
     if (v == "0" || v == "false" || v == "off") out = false;
 }
 
+// "X,Y" with optional spaces; monitors left of or above the main one have negative coordinates.
+bool parsePoint(const std::string& v, int& x, int& y) {
+    const size_t comma = v.find(',');
+    if (comma == std::string::npos) return false;
+    return toInt(trim(v.substr(0, comma)), -32768, 32767, x) && toInt(trim(v.substr(comma + 1)), -32768, 32767, y);
+}
+
 void setIdList(const std::string& v, std::vector<uint16_t>& out) {
     std::vector<uint16_t> ids;
     std::istringstream list(v);
@@ -46,6 +54,16 @@ void setIdList(const std::string& v, std::vector<uint16_t>& out) {
 }
 
 }  // namespace
+
+std::optional<int> parseFKey(const std::string& token) {
+    std::string t = trim(token);
+    for (char& ch : t) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    if (t == "none") return 0;
+    if (t.size() == 2 && t[0] == 'f' && t[1] >= '1' && t[1] <= '9') return t[1] - '0';
+    return std::nullopt;
+}
+
+std::string fKeyToken(int key) { return key >= 1 && key <= 9 ? "F" + std::to_string(key) : "none"; }
 
 Config parseConfig(const std::string& text) {
     Config c;
@@ -100,6 +118,29 @@ Config parseConfig(const std::string& text) {
             setBool(val, c.mark);
         } else if (key == "rumble.enabled") {
             setBool(val, c.rumble);
+        } else if (key == "general.language") {
+            if (auto l = parseLang(val)) c.lang = *l;
+        } else if (key == "mouse.lock") {
+            setBool(val, c.mouseLock);
+        } else if (key == "mouse.focus_click") {
+            setBool(val, c.focusClick);
+        } else if (key == "mouse.middle" || key == "mouse.button4" || key == "mouse.button5") {
+            const size_t i = key == "mouse.middle" ? 0 : key == "mouse.button4" ? 1 : 2;
+            if (auto k = parseFKey(val)) c.mouseKeys[i] = *k;
+        } else if (key == "window.borderless") {
+            setBool(val, c.borderless);
+        } else if (key == "window.position") {
+            int x = 0;
+            int y = 0;
+            if (val == "center") {
+                c.position = WindowPlacement{};
+            } else if (val == "keep") {
+                c.position = WindowPlacement{WindowPlacement::Kind::Keep, 0, 0};
+            } else if (parsePoint(val, x, y)) {
+                c.position = WindowPlacement{WindowPlacement::Kind::At, x, y};
+            }
+        } else if (key == "window.background_sleep_ms") {
+            toInt(val, 0, 100, c.backgroundSleepMs);
         }
     }
     return c;

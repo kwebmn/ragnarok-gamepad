@@ -1,13 +1,25 @@
 #pragma once
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
+
+#include "core/i18n.hpp"
 
 namespace uapad {
 
 enum class LogLevel { Error = 0, Info = 1, Debug = 2 };
 enum class PressMode { Ring, Center };              // where the virtual LMB goes down when walking starts
 enum class ButtonChannel { DirectInput, Messages };  // how the virtual LMB reaches the client
+
+// [window] position of a borderless window: centred on its monitor, left where the picture is, or at X,Y.
+struct WindowPlacement {
+    enum class Kind { Center, Keep, At };
+    Kind kind = Kind::Center;
+    int x = 0;
+    int y = 0;
+};
 
 struct Config {
     bool enabled = true;
@@ -26,7 +38,18 @@ struct Config {
     int repeatMs = 250;  // a held slot button fires again this often; 0 = once per press
     bool mark = true;    // "!" over a newly chosen target (shown to the client only)
     bool rumble = true;
+    Lang lang = Lang::En;
+    bool mouseLock = false;                    // the cursor stays inside the game window while it is active
+    bool focusClick = false;                   // the click that activates the window reaches the game
+    std::array<int, 3> mouseKeys = {0, 0, 0};  // middle, 4th, 5th mouse button: 0 none, 1-9 the key F1-F9
+    bool borderless = false;
+    WindowPlacement position;
+    int backgroundSleepMs = 10;  // a frame sleeps this long while the game is in the background; 0 = never
 };
+
+// "none" / "F1"..."F9" in uaro-pad.ini <-> 0 / 1...9.
+std::optional<int> parseFKey(const std::string& token);
+std::string fKeyToken(int key);
 
 // Parses uaro-pad.ini text. Unknown sections/keys and malformed values keep the defaults.
 Config parseConfig(const std::string& text);

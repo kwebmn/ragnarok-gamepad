@@ -11,7 +11,9 @@ cursor exactly, and the window can go borderless.
 *The Start menu over the game: each button with its action and what lies in the slot it uses (Assassin Cross,
 Sonic Blow on X, Back Sliding on B).*
 
-Player guides: **[English](dist/README.md)** · [Українська](dist/README.uk.md) · [Русский](dist/README.ru.md)
+**[Download](#quick-start)** · Installation: **[English](INSTALL.md)** · [Українська](INSTALL.uk.md) ·
+[Русский](INSTALL.ru.md) · Player guides: **[English](dist/README.md)** · [Українська](dist/README.uk.md) ·
+[Русский](dist/README.ru.md)
 
 ---
 
@@ -101,14 +103,19 @@ Player guides: **[English](dist/README.md)** · [Українська](dist/READ
 
 ## Quick start
 
+**Download:** [uaro-pad-0.5.1.zip](https://github.com/kwebmn/ragnarok-gamepad/raw/main/release/uaro-pad-0.5.1.zip)
+— the module, its settings file and the player's guide. Just the module, for updating:
+[dinput.dll](https://github.com/kwebmn/ragnarok-gamepad/raw/main/release/dinput.dll). Both are in
+[release/](release/).
+
 1. Close the client.
-2. Copy `dinput.dll` and `uaro-pad.ini` next to `uaRO.exe`. If a `dinput.dll` is already there (ROExt),
-   replace it.
+2. Copy `dinput.dll` and `uaro-pad.ini` next to `uaRO.exe`. If a `dinput.dll` is already there (ROExt), rename it
+   to `dinput.dll.bak` first.
 3. Plug in an Xbox controller (or any controller Windows sees as XInput) and start the client.
 4. Press **Start** to choose the language and set up the buttons.
 
-To remove the pad, delete `dinput.dll`, `uaro-pad.ini` and `uaro-pad-binds.ini`; the client itself is never
-changed.
+The step-by-step installation guide, with updating, removing and what to do when something goes wrong:
+**[English](INSTALL.md)** · [Українська](INSTALL.uk.md) · [Русский](INSTALL.ru.md).
 
 ## Controls
 
@@ -224,6 +231,7 @@ cmake -S . -B build-host && cmake --build build-host && build-host/uapad_tests
 | `tests` | unit tests of the core |
 | `tools` | packet table generator, DLL import check, packaging |
 | `dist` | what players get: `uaro-pad.ini` and the guides in three languages |
+| `release` | the built module: the package for a first install and `dinput.dll` for updating |
 | `docs` | design notes and images |
 
 ## License

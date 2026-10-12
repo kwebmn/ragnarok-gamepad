@@ -1,0 +1,55 @@
+#pragma once
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <optional>
+#include <string>
+
+#include "core/logic/pad.hpp"
+
+namespace uapad {
+
+// What a gamepad button does.
+struct Action {
+    enum class Kind : uint8_t { None, Attack, Slot, Pickup, SitStand, ClearTarget };
+    Kind kind = Kind::None;
+    uint8_t slot = 0;  // Kind::Slot: hotkey index 0-26 (row slot / 9 + 1, key F(slot % 9 + 1))
+};
+inline bool operator==(const Action& a, const Action& b) {
+    return a.kind == b.kind && (a.kind != Action::Kind::Slot || a.slot == b.slot);
+}
+inline bool operator!=(const Action& a, const Action& b) { return !(a == b); }
+
+constexpr size_t kBindableCount = 14;
+// The buttons the player may rebind, in menu order. Start (menu), Back (pad on/off) and the sticks are fixed.
+constexpr std::array<uint16_t, kBindableCount> kBindableButtons = {
+    kPadA, kPadB, kPadX, kPadY, kPadLB, kPadRB, kPadLT, kPadRT, kPadUp, kPadRight, kPadDown, kPadLeft, kPadL3, kPadR3};
+using Bindings = std::array<Action, kBindableCount>;  // by position in kBindableButtons
+
+Bindings defaultBindings();  // the 0.2 hunter layout
+// The action after (dir > 0) or before `a` in the menu's ring: none, attack, slots 1-27, pickup, sit, untarget.
+Action nextAction(Action a, int dir);
+
+const char* buttonToken(size_t i);  // in the file: "A", "LB", "UP"...
+const char* buttonLabel(size_t i);  // in the menu (UTF-8): "A", "D-pad ↑"...
+std::string actionToken(Action a);  // in the file: "attack", "slot 12"...
+std::optional<Action> parseAction(const std::string& token);
+std::string actionLabel(Action a);  // in the menu (UTF-8): "Атака", "Слот F3, ряд 2"...
+
+// Every character's layout, as kept in uaro-pad-binds.ini.
+struct Profiles {
+    struct Character {
+        std::string name;  // as the server spells it, for people reading the file
+        Bindings bindings{};
+    };
+    Bindings fallback = defaultBindings();  // [default]: characters without a section of their own
+    std::map<uint32_t, Character> characters;  // [char <id>]
+    Bindings forCharacter(uint32_t charId) const;
+};
+
+// Missing keys fall back to [default], then to defaultBindings(); unknown lines are skipped.
+Profiles parseProfiles(const std::string& text);
+std::string formatProfiles(const Profiles& profiles);
+
+}  // namespace uapad

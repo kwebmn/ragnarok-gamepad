@@ -30,8 +30,8 @@ TEST(ctl_walk_ring_point_and_stop) {
     o = c.tick(pad(), w, view(), 200);  // released
     CHECK(!o.mouse.active);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
-    CHECK(decodePos3(o.packets[0].data(), 5) == (Cell{100, 100}));
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
+    CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{100, 100}));
 }
 
 TEST(ctl_walk_deadzone_and_center_press) {
@@ -119,9 +119,9 @@ TEST(ctl_attack_takes_nearest_and_marks_it) {
     CHECK(o.rumble == Rumble::TargetSwitch);
     CHECK_EQ(o.mark, 110000001u);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0190);
-    CHECK_EQ(rd32(o.packets[0].data(), 5), 110000001u);
-    CHECK_EQ(o.packets[0][18], 7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000001u);
+    CHECK_EQ(pkt(o, 0)[18], 7);
     o = c.tick(pad(), w, view(), 1100);  // released: the server keeps attacking on its own
     CHECK(o.packets.empty());
     CHECK_EQ(o.mark, 0u);
@@ -154,8 +154,8 @@ TEST(ctl_held_attack_moves_on_to_next) {
     CHECK_EQ(c.target(), 110000002u);
     CHECK_EQ(o.mark, 110000002u);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0190);
-    CHECK_EQ(rd32(o.packets[0].data(), 5), 110000002u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000002u);
 }
 
 TEST(ctl_candidates_are_monsters_only) {
@@ -225,7 +225,7 @@ TEST(ctl_held_attack_gives_up_on_unreachable_target) {
     TickOutput o = c.tick(pad(kPadA), w, view(), 5000);
     CHECK_EQ(c.target(), 110000002u);  // 4 s without hits: the next one, since A is held
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(rd32(o.packets[0].data(), 5), 110000002u);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000002u);
     w.apply(EvAction{kSelf, 110000002, 0}, 8000);  // our hit lands
     c.tick(pad(kPadA), w, view(), 9500);
     CHECK_EQ(c.target(), 110000002u);
@@ -260,7 +260,7 @@ TEST(ctl_walking_interrupts_attack) {
     c.tick(p, w, view(), 1500);
     TickOutput o = c.tick(pad(), w, view(), 2000);
     CHECK_EQ(o.packets.size(), 1u);  // only the stop request
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
     CHECK_EQ(c.target(), 110000001u);  // the target stays for the next A
     CHECK(!c.attacking());
 }
@@ -277,8 +277,8 @@ TEST(ctl_held_attack_resumes_after_walk) {
     CHECK(o.packets.empty());  // no attack while walking
     o = c.tick(pad(kPadA), w, view(), 2000);  // stick released, A still held: stop, then attack again
     CHECK_EQ(o.packets.size(), 2u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
-    CHECK_EQ(pid(o.packets[1]), 0x0190);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 1)), 0x0190);
 }
 
 TEST(ctl_held_attack_waits_while_sitting) {
@@ -292,7 +292,7 @@ TEST(ctl_held_attack_waits_while_sitting) {
     w.apply(EvAction{kSelf, 0, 3}, 1100);  // stood up
     o = c.tick(pad(kPadA), w, view(), 1200);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0190);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
 }
 
 TEST(ctl_timers_survive_tick_wraparound) {
@@ -309,6 +309,84 @@ TEST(ctl_timers_survive_tick_wraparound) {
     CHECK_EQ(c.target(), 110000002u);
 }
 
+TEST(ctl_skill_during_attack_resumes_it) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{103, 100});  // within Fire Bolt's 9 cells
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    w.apply(EvAction{kSelf, 110000001, 0}, 1500);         // our hit
+    TickOutput o = c.tick(pad(kPadUp), w, view(), 2000);  // F7: Fire Bolt; the server ends the attack for it
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
+    CHECK(c.tick(pad(), w, view(), 2200).packets.empty());
+    o = c.tick(pad(), w, view(), 2300);  // 300 ms after the skill: the attack is asked for again
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000001u);
+}
+
+TEST(ctl_client_skill_during_attack_resumes_it) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    w.apply(EvAction{kSelf, 110000001, 0}, 1500);
+    c.onClientSkill(1600);  // a skill from the keyboard ends the attack too
+    CHECK(c.tick(pad(), w, view(), 1800).packets.empty());
+    TickOutput o = c.tick(pad(), w, view(), 1900);
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    Controller calm(Config{});
+    calm.onClientSkill(100);  // not attacking: nothing to resume
+    CHECK(calm.tick(pad(), w, view(), 500).packets.empty());
+}
+
+TEST(ctl_attack_asked_again_when_hits_stop) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    w.apply(EvAction{kSelf, 110000001, 0}, 1500);  // our hit
+    CHECK(c.tick(pad(), w, view(), 2400).packets.empty());  // 0.9 s since the hit: fine
+    TickOutput o = c.tick(pad(), w, view(), 2500);         // 1 s without a hit: the attack stopped somehow
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK(c.tick(pad(), w, view(), 2600).packets.empty());
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{101, 100}}, 3400);  // the client walks us up to it
+    CHECK(c.tick(pad(), w, view(), 3500).packets.empty());     // a request would stop that walk
+    o = c.tick(pad(), w, view(), 3600);                        // arrived, still no hit: ask again
+    CHECK_EQ(o.packets.size(), 1u);
+}
+
+TEST(ctl_give_up_counts_from_the_first_request) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});  // our hits never land
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    CHECK_EQ(c.tick(pad(), w, view(), 2000).packets.size(), 1u);  // asked again
+    CHECK_EQ(c.tick(pad(), w, view(), 3000).packets.size(), 1u);  // and again
+    c.tick(pad(), w, view(), 5000);  // 4 s after the first request: give up anyway
+    CHECK_EQ(c.target(), 0u);
+}
+
+TEST(ctl_mouse_click_hands_the_fight_to_the_mouse) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    ViewInfo clicked = view();
+    clicked.mouseClicked = true;  // the player clicked with the real mouse, e.g. to walk away
+    c.tick(pad(), w, clicked, 1200);
+    CHECK(!c.attacking());
+    CHECK_EQ(c.target(), 110000001u);  // the target stays for A and the skills
+    CHECK(c.tick(pad(), w, view(), 3000).packets.empty());  // nothing pulls the player back
+}
+
 // --- slots ---
 
 TEST(ctl_slot_buttons_cover_the_first_row) {
@@ -322,26 +400,26 @@ TEST(ctl_slot_buttons_cover_the_first_row) {
         t += 200;
         return o;
     };
-    auto one = [](const TickOutput& o, uint16_t id) { return o.packets.size() == 1 && pid(o.packets[0]) == id; };
+    auto one = [](const TickOutput& o, uint16_t id) { return o.packets.size() == 1 && pid(pkt(o, 0)) == id; };
     TickOutput o = tap(pad(kPadX));  // F1: Bash on the nearest monster, which becomes the target
-    CHECK(one(o, 0x0072) && rd16(o.packets[0].data(), 10) == 5);
+    CHECK(one(o, 0x0072) && rd16(pkt(o, 0).data(), 10) == 5);
     CHECK_EQ(c.target(), 110000001u);
     o = tap(pad(kPadY));  // F2: Heal on ourselves
-    CHECK(one(o, 0x0072) && rd16(o.packets[0].data(), 10) == 28 && rd32(o.packets[0].data(), 21) == kSelf);
+    CHECK(one(o, 0x0072) && rd16(pkt(o, 0).data(), 10) == 28 && rd32(pkt(o, 0).data(), 21) == kSelf);
     o = tap(pad(kPadB));  // F3: Safety Wall under ourselves
-    CHECK(one(o, 0x0113) && rd16(o.packets[0].data(), 9) == 12 && rd16(o.packets[0].data(), 12) == 100);
+    CHECK(one(o, 0x0113) && rd16(pkt(o, 0).data(), 9) == 12 && rd16(pkt(o, 0).data(), 12) == 100);
     o = tap(pad(kPadRB));  // F4: Thunderstorm on the target's cell
-    CHECK(one(o, 0x0113) && rd16(o.packets[0].data(), 9) == 21 && rd16(o.packets[0].data(), 12) == 101);
+    CHECK(one(o, 0x0113) && rd16(pkt(o, 0).data(), 9) == 21 && rd16(pkt(o, 0).data(), 12) == 101);
     o = tap(padRT(0));  // F5: Red Potion
     CHECK(one(o, 0x009f));
     o = tap(pad(kPadLB));  // F6: Orange Potion, none in the inventory
     CHECK(o.packets.empty() && o.rumble == Rumble::Denied);
     o = tap(pad(kPadUp));  // F7: Fire Bolt on the target
-    CHECK(one(o, 0x0072) && rd16(o.packets[0].data(), 10) == 19 && rd32(o.packets[0].data(), 21) == 110000001u);
+    CHECK(one(o, 0x0072) && rd16(pkt(o, 0).data(), 10) == 19 && rd32(pkt(o, 0).data(), 21) == 110000001u);
     o = tap(pad(kPadRight));  // F8: empty
     CHECK(o.packets.empty() && o.rumble == Rumble::Denied);
     o = tap(pad(kPadDown));  // F9: Ankle Snare, next to us towards the target
-    CHECK(one(o, 0x0113) && rd16(o.packets[0].data(), 9) == 117);
+    CHECK(one(o, 0x0113) && rd16(pkt(o, 0).data(), 9) == 117);
     CHECK(!c.attacking());  // no button but A starts an attack
 }
 
@@ -381,19 +459,19 @@ TEST(ctl_held_slot_waits_while_approaching) {
     TickOutput o = c.tick(pad(kPadX), w, view(), 1000);  // Bash, range 1: walk there first
     CHECK(c.approaching());
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
     o = c.tick(pad(kPadX), w, view(), 1300);  // held: no repeat on the way, only the next step
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
     w.apply(EvSetPos{kSelf, Cell{104, 100}}, 1400);
     o = c.tick(pad(kPadX), w, view(), 1450);  // arrived: the Bash goes out
     CHECK(!c.approaching());
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0072);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
     CHECK(c.tick(pad(kPadX), w, view(), 1460).packets.empty());  // the slot just fired
     o = c.tick(pad(kPadX), w, view(), 1710);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0072);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
 }
 
 TEST(ctl_slot_throttle_is_per_slot) {
@@ -417,21 +495,21 @@ TEST(ctl_slot_enemy_skill_targets_nearest_then_approaches) {
     CHECK_EQ(c.target(), 110000001u);
     CHECK_EQ(o.mark, 110000001u);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0072);
-    CHECK_EQ(rd16(o.packets[0].data(), 10), 19);
-    CHECK_EQ(rd32(o.packets[0].data(), 21), 110000001u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
+    CHECK_EQ(rd16(pkt(o, 0).data(), 10), 19);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 21), 110000001u);
     c.tick(pad(), w, view(), 1100);
     o = c.tick(pad(kPadX), w, view(), 1300);  // F1: Bash, range 1: walk first
     CHECK(c.approaching());
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
-    CHECK(decodePos3(o.packets[0].data(), 5) == (Cell{105, 100}));
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
+    CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{105, 100}));
     w.apply(EvSetPos{kSelf, Cell{104, 100}}, 1400);  // arrived next to it
     o = c.tick(pad(), w, view(), 1450);
     CHECK(!c.approaching());
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0072);
-    CHECK_EQ(rd16(o.packets[0].data(), 10), 5);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
+    CHECK_EQ(rd16(pkt(o, 0).data(), 10), 5);
 }
 
 TEST(ctl_empty_slot_hint_when_server_sent_no_bar) {
@@ -466,22 +544,22 @@ TEST(ctl_pickup_nearest_with_approach) {
     w.apply(EvGroundItem{4244, 909, Cell{120, 100}}, 0);  // distance 20: out of reach
     TickOutput o = c.tick(padLT(0), w, view(), 1000);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00f5);
-    CHECK_EQ(rd32(o.packets[0].data(), 4), 4243u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4243u);
     c.tick(pad(), w, view(), 1010);
     w.apply(EvGroundItemGone{4243}, 1020);
     o = c.tick(padLT(0), w, view(), 1100);
     CHECK(c.approaching());
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
     o = c.tick(pad(), w, view(), 1200);  // 100 ms: no new step yet
     CHECK(o.packets.empty());
     o = c.tick(pad(), w, view(), 1350);  // 250 ms: step again
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x00a7);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00a7);
     w.apply(EvSetPos{kSelf, Cell{103, 100}}, 1400);
     o = c.tick(pad(), w, view(), 1450);
-    CHECK_EQ(pid(o.packets[0]), 0x00f5);
-    CHECK_EQ(rd32(o.packets[0].data(), 4), 4242u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4242u);
     CHECK(!c.approaching());
 }
 
@@ -491,11 +569,11 @@ TEST(ctl_held_pickup_takes_items_one_by_one) {
     w.apply(EvGroundItem{4242, 909, Cell{101, 100}}, 0);
     w.apply(EvGroundItem{4243, 909, Cell{100, 101}}, 0);
     TickOutput o = c.tick(padLT(0), w, view(), 1000);
-    CHECK_EQ(rd32(o.packets[0].data(), 4), 4242u);  // equally close: the lower id
+    CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4242u);  // equally close: the lower id
     w.apply(EvGroundItemGone{4242}, 1100);
     o = c.tick(padLT(0), w, view(), 1250);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(rd32(o.packets[0].data(), 4), 4243u);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 4), 4243u);
 }
 
 TEST(ctl_pickup_nothing_denied_and_approach_timeout) {
@@ -527,12 +605,12 @@ TEST(ctl_sit_stand_on_dpad_left) {
     Controller c(Config{});
     WorldState w = world();
     TickOutput o = c.tick(pad(kPadLeft), w, view(), 1000);
-    CHECK_EQ(pid(o.packets[0]), 0x0190);
-    CHECK_EQ(o.packets[0][18], 2);  // sit
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK_EQ(pkt(o, 0)[18], 2);  // sit
     c.tick(pad(), w, view(), 1010);
     w.apply(EvAction{kSelf, 0, 2}, 1050);  // the server confirms: sitting
     o = c.tick(pad(kPadLeft), w, view(), 1100);
-    CHECK_EQ(o.packets[0][18], 3);  // stand
+    CHECK_EQ(pkt(o, 0)[18], 3);  // stand
     CHECK(c.tick(pad(kPadLeft), w, view(), 1500).packets.empty());  // held: no repeat
 }
 
@@ -548,7 +626,7 @@ TEST(ctl_r3_clears_target_and_stops_attack) {
     CHECK_EQ(c.target(), 0u);
     CHECK(!c.attacking());
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0118);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0118);
     CHECK(o.rumble == Rumble::TargetCleared);
     c.tick(pad(), w, view(), 1300);
     o = c.tick(pad(kPadR3), w, view(), 1400);  // nothing to clear
@@ -608,8 +686,8 @@ TEST(ctl_right_stick_redirects_running_attack) {
     TickOutput o = c.tick(padR(0, 1), w, view(), 1400);
     CHECK_EQ(c.target(), 110000002u);
     CHECK_EQ(o.packets.size(), 1u);
-    CHECK_EQ(pid(o.packets[0]), 0x0190);
-    CHECK_EQ(rd32(o.packets[0].data(), 5), 110000002u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0190);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000002u);
 }
 
 TEST(ctl_r3_holds_aim_until_stick_is_released) {

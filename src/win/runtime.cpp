@@ -43,6 +43,8 @@ struct State {
     bool checkedPointers = false;
     bool loggedBufferRead = false;
     bool loggedMark = false;
+    bool realLmb = false;      // the real left button as DirectInput last reported it
+    bool realClicked = false;  // it went down since the last tick
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
     bool ticked = false;
@@ -124,6 +126,8 @@ ViewInfo currentView() {
     ViewInfo v;
     if (!s.hwnd) return v;
     v.focused = GetForegroundWindow() == s.hwnd;
+    v.mouseClicked = s.realClicked;
+    s.realClicked = false;
     RECT r;
     if (GetClientRect(s.hwnd, &r)) {
         v.width = r.right - r.left;
@@ -259,6 +263,10 @@ void onMouseState(DWORD cb, LPVOID data) {
         tick();
         if (!data || cb < sizeof(DIMOUSESTATE) || !s.hwnd) return;
         auto* st = static_cast<DIMOUSESTATE*>(data);
+        // The device's own button, before we put the virtual one in: a click means the player took over.
+        const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;
+        if (realLmb && !s.realLmb) s.realClicked = true;
+        s.realLmb = realLmb;
         if (!s.cfg.mouseFreedom && !s.mouse.active) {
             s.bridge.reset();  // the real mouse moves the client's cursor now; resync before driving it again
             return;

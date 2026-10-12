@@ -288,3 +288,19 @@ TEST(session_client_walk_requests_teach_the_camera) {
     CHECK_EQ(s.controller().camera().samples(), 1u);
     CHECK(std::fabs(s.controller().camera().radians() - 3.14159265358979323846 / 2) < 1e-6);
 }
+
+TEST(session_client_skill_resumes_the_pad_attack) {
+    Session s{Config{}};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    s.takeInjectable(100);
+    PadState none;
+    none.connected = true;
+    s.tick(none, kView, 150);
+    const Bytes skill = buildSkillToId(46, 10, 110000001);  // Double Strafe from the keyboard
+    s.onClientSent(kMap, skill.data(), skill.size(), 200);
+    s.tick(none, kView, 500);
+    const std::vector<Bytes> ready = s.takeInjectable(500);
+    CHECK_EQ(ready.size(), 1u);
+    CHECK(!ready.empty() && rd16(ready[0].data(), 0) == 0x0190);
+}

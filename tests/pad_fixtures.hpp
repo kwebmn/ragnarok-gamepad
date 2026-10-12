@@ -33,6 +33,12 @@ inline PadState padR(float rx, float ry, uint16_t buttons = 0) {
     return p;
 }
 
-inline uint16_t pid(const Bytes& b) { return rd16(b.data(), 0); }
+inline uint16_t pid(const Bytes& b) { return b.size() >= 2 ? rd16(b.data(), 0) : 0; }
+
+// Request i of a tick, or a blank one when there are fewer: a failed size check must not crash the run.
+inline const Bytes& pkt(const TickOutput& o, size_t i) {
+    static const Bytes kNone(64, 0);
+    return i < o.packets.size() ? o.packets[i] : kNone;
+}
 
 }  // namespace fx

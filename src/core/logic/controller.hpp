@@ -18,6 +18,7 @@ struct ViewInfo {
     bool focused = false;
     int width = 0;  // client area, px
     int height = 0;
+    bool mouseClicked = false;  // the player pressed the real left mouse button since the last tick
 };
 
 struct VirtualMouse {
@@ -44,6 +45,9 @@ public:
     // The client asked to walk to `dest` (0x00a7). While the pad holds the walking point steady this
     // shows which way the camera is turned.
     void onClientWalk(Cell dest, const WorldState& world, uint32_t nowMs);
+    // The client asked for a skill itself (0x0072 / 0x0113, e.g. from the keyboard): the server ends our
+    // attack for it, so ask for the attack again.
+    void onClientSkill(uint32_t nowMs);
 
     bool enabled() const { return enabled_; }
     uint32_t target() const { return target_; }
@@ -81,6 +85,8 @@ private:
     void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void clearTarget(TickOutput& out);
+    void stopAttacking();
+    void attackAgainSoon(uint32_t now);
     void stepApproach(const WorldState& world, uint32_t now, TickOutput& out);
     void maintainTarget(bool attackHeld, const WorldState& world, uint32_t now, TickOutput& out);
     uint32_t nearestTarget(const WorldState& world, uint32_t now) const;
@@ -105,7 +111,7 @@ private:
     uint32_t target_ = 0;
     bool wantAttack_ = false;  // we want the server to be attacking target_
     bool attackSent_ = false;  // an attack request for target_ is in effect
-    uint32_t attackSinceMs_ = 0;
+    std::optional<uint32_t> engagedSinceMs_;  // our first attack request on target_: the give-up clock
     std::optional<uint32_t> lastAttackMs_;
     std::array<std::optional<uint32_t>, kHotkeySlots> lastSlotMs_{};
     std::unordered_map<uint32_t, uint32_t> blacklist_;  // actor id -> blacklisted until (ms)

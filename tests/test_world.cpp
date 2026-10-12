@@ -143,3 +143,12 @@ TEST(world_last_move) {
     w.apply(EvMapChange{"prontera", Cell{150, 150}}, 3000);
     CHECK(!w.lastMove());
 }
+
+TEST(world_self_moving) {
+    WorldState w = inGame();
+    CHECK(!w.selfMoving(0));
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{104, 100}}, 1000);
+    CHECK(w.selfMoving(1000));
+    CHECK(w.selfMoving(1500));
+    CHECK(!w.selfMoving(1600));  // 4 cells at 150 ms
+}

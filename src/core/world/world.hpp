@@ -36,6 +36,7 @@ public:
     uint32_t selfId() const { return selfId_; }
     bool inGame() const { return inGame_; }
     Cell selfPos(uint32_t nowMs) const;
+    bool selfMoving(uint32_t nowMs) const { return selfPos(nowMs) != selfTo_; }
     bool sitting() const { return sitting_; }
     // Our last step on this map as a vector (destination - start), nothing before the first one.
     std::optional<Cell> lastMove() const { return lastMove_; }

@@ -66,6 +66,8 @@ void Session::feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs) {
             world_.setHotkey(change->index, change->key);
         } else if (auto dest = parseWalkRequest(p)) {
             controller_.onClientWalk(*dest, world_, nowMs);
+        } else if (p.size() >= 2 && (rd16(p.data(), 0) == 0x0072 || rd16(p.data(), 0) == 0x0113)) {
+            controller_.onClientSkill(nowMs);  // useskilltoid / useskilltopos
         }
     }
 }

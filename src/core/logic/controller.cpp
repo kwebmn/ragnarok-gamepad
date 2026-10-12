@@ -22,6 +22,7 @@ constexpr uint32_t kApproachTimeoutMs = 5000;
 constexpr uint32_t kRingSettleMs = 150;
 constexpr double kRingTurn = 10.0 * kPi / 180.0;
 constexpr uint32_t kMarkAgainMs = 1000;
+constexpr uint32_t kReattackMs = 1000;  // standing still without a hit of ours this long: ask again
 constexpr int kPickupRadius = 10;
 constexpr int kPickupReach = 1;
 
@@ -69,10 +70,26 @@ uint32_t Controller::nearestTarget(const WorldState& world, uint32_t now) const 
     return c.empty() ? 0 : c.front();
 }
 
+void Controller::stopAttacking() {
+    wantAttack_ = false;
+    attackSent_ = false;
+    engagedSinceMs_.reset();
+}
+
+// Every skill but a combo ends the server's attack (uAthena unit_skilluse_id2 / _pos2): ask for it again.
+void Controller::attackAgainSoon(uint32_t now) {
+    if (!wantAttack_ || target_ == 0) return;
+    attackSent_ = false;
+    lastAttackMs_ = now;  // the request waits attack_interval_ms after the skill
+}
+
+void Controller::onClientSkill(uint32_t now) { attackAgainSoon(now); }
+
 void Controller::setTarget(uint32_t id, uint32_t now, TickOutput& out) {
     if (id == target_) return;
     target_ = id;
     attackSent_ = false;
+    engagedSinceMs_.reset();
     if (id == 0) return;
     if (out.rumble == Rumble::None) out.rumble = Rumble::TargetSwitch;
     out.notes.push_back("target " + std::to_string(id));
@@ -111,7 +128,7 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         enabled_ = !enabled_;
         out.rumble = enabled_ ? Rumble::PadOn : Rumble::PadOff;
         out.notes.push_back(enabled_ ? "pad on" : "pad off");
-        if (!enabled_) wantAttack_ = false;
+        if (!enabled_) stopAttacking();
     }
     if (!enabled_ || !pad.connected || !view.focused || !world.inGame() || world.dead()) {
         walking_ = false;
@@ -120,6 +137,11 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         armed_ = 0;  // buttons pressed meanwhile do nothing until pressed again
         approach_.reset();
         return out;
+    }
+    if (view.mouseClicked && (wantAttack_ || approach_)) {  // the player took over with the mouse
+        stopAttacking();
+        approach_.reset();
+        out.notes.push_back("mouse click: the pad stops its attack");
     }
     walk(pad, world, view, now, out);
     aim(pad, world, now, out);
@@ -143,8 +165,7 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
         if (starting) {
             walking_ = true;
             approach_.reset();
-            attackSent_ = false;
-            wantAttack_ = false;  // walking ends a fight; a held A starts it again afterwards
+            stopAttacking();  // walking ends a fight; a held A starts it again afterwards
             ringSteadyFromMs_.reset();
         }
         const float radius = cfg_.walkRadius * float(std::min(view.width, view.height));
@@ -240,8 +261,7 @@ void Controller::fire(const Binding& b, bool repeat, const WorldState& world, ui
             break;
         case Action::SitStand:
             out.packets.push_back(buildAction(0, world.sitting() ? kActionStand : kActionSit));
-            attackSent_ = false;
-            wantAttack_ = false;
+            stopAttacking();
             break;
         case Action::ClearTarget:
             clearTarget(out);
@@ -285,6 +305,7 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
             break;
         case SlotDecision::Kind::Send:
             out.packets.push_back(std::move(d.packet));
+            attackAgainSoon(now);
             break;
         case SlotDecision::Kind::Approach: {
             Approach ap;
@@ -338,8 +359,7 @@ void Controller::clearTarget(TickOutput& out) {
     if (target_ == 0 && !wantAttack_) return;
     out.packets.push_back(buildStopAttack());
     target_ = 0;
-    wantAttack_ = false;
-    attackSent_ = false;
+    stopAttacking();
     approach_.reset();
     out.rumble = Rumble::TargetCleared;
     out.notes.push_back("target cleared");
@@ -373,7 +393,9 @@ void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput&
         else
             out.packets.push_back(buildSkillToId(ap.skill, ap.lv, ap.id));
         if (ap.slot >= 0) lastSlotMs_[size_t(ap.slot)] = now;  // a held button waits its turn again
+        const bool skill = !ap.pickup;
         approach_.reset();
+        if (skill) attackAgainSoon(now);
         return;
     }
     if (due(ap.lastStepMs, now, kApproachStepMs)) {
@@ -393,29 +415,39 @@ void Controller::maintainTarget(bool attackHeld, const WorldState& world, uint32
         out.notes.push_back("target " + std::to_string(target_) + " is gone");
         target_ = 0;
         attackSent_ = false;
+        engagedSinceMs_.reset();
     }
-    if (target_ != 0 && attackSent_ &&
-        shouldGiveUp(world, target_, attackSinceMs_, now, uint32_t(cfg_.giveUpSeconds * 1000.0f))) {
+    if (target_ != 0 && engagedSinceMs_ &&
+        shouldGiveUp(world, target_, *engagedSinceMs_, now, uint32_t(cfg_.giveUpSeconds * 1000.0f))) {
         blacklist_[target_] = now + uint32_t(cfg_.blacklistSeconds * 1000.0f);
         out.notes.push_back("giving up on " + std::to_string(target_));
         target_ = 0;
         attackSent_ = false;
+        engagedSinceMs_.reset();
     }
     // A press fights the target until it is gone; holding A goes on to the next one.
     if (attackHeld)
         wantAttack_ = true;
     else if (target_ == 0)
-        wantAttack_ = false;
+        stopAttacking();
     const bool idle = !walking_ && !approach_ && !world.sitting();
     if (wantAttack_ && target_ == 0 && idle) {
         if (const uint32_t id = nearestTarget(world, now)) setTarget(id, now, out);
+    }
+    // The server drops our attack for many reasons (a skill, a cast, a click elsewhere). Standing still with
+    // no hit of ours for a while means it is not attacking: ask again. Not while moving: every attack
+    // request stops the walk first (clif_parse_ActionRequest_sub).
+    if (target_ != 0 && wantAttack_ && attackSent_ && idle && !world.selfMoving(now)) {
+        uint32_t ref = lastAttackMs_ ? *lastAttackMs_ : now;
+        if (auto hit = world.lastHitMs(target_); hit && int32_t(*hit - ref) > 0) ref = *hit;
+        if (now - ref >= kReattackMs) attackSent_ = false;
     }
     if (target_ != 0 && wantAttack_ && !attackSent_ && idle &&
         due(lastAttackMs_, now, uint32_t(cfg_.attackIntervalMs))) {
         out.packets.push_back(buildAction(target_, kActionAttack));
         lastAttackMs_ = now;
         attackSent_ = true;
-        attackSinceMs_ = now;
+        if (!engagedSinceMs_) engagedSinceMs_ = now;
     }
 }
 

@@ -30,6 +30,6 @@ struct PadState {
     float lt = 0, rt = 0;  // 0..1
 };
 
-enum class Rumble { None, TargetSwitch, TargetCleared, PadOn, PadOff, Denied };
+enum class Rumble { None, TargetSwitch, TargetCleared, PadOn, PadOff, Denied, CameraOn, CameraOff };
 
 }  // namespace uapad

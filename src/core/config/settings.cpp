@@ -1,7 +1,15 @@
 #include "core/config/settings.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
 namespace uapad {
 namespace {
+
+constexpr int kWalkMin = 10;  // the menu's walk radius, percent
+constexpr int kWalkMax = 44;
+constexpr int kWalkStep = 2;
 
 constexpr int kSleepWhenOn = 10;  // background_sleep_ms when the file has no number of its own
 
@@ -38,6 +46,7 @@ Text labelOf(SettingRow row) {
         case SettingRow::Borderless: return Text::Borderless;
         case SettingRow::SaveCpu: return Text::SaveCpu;
         case SettingRow::Rumble: return Text::Rumble;
+        case SettingRow::WalkRadius: return Text::WalkRadius;
         case SettingRow::Mark: break;
         case SettingRow::Count: break;
     }
@@ -57,6 +66,11 @@ IniEdit editOf(const Settings& s, SettingRow row, int sleepWhenOn) {
         case SettingRow::SaveCpu:
             return IniEdit{"window", "background_sleep_ms", std::to_string(s.saveCpu ? sleepOn(sleepWhenOn) : 0)};
         case SettingRow::Rumble: return IniEdit{"rumble", "enabled", onOff(s.rumble)};
+        case SettingRow::WalkRadius: {
+            char text[16];
+            std::snprintf(text, sizeof text, "%.2f", s.walkPercent / 100.0);
+            return IniEdit{"stick", "walk_radius", text};
+        }
         case SettingRow::Mark: break;
         case SettingRow::Count: break;
     }
@@ -75,6 +89,7 @@ bool same(const Settings& a, const Settings& b, SettingRow row) {
         case SettingRow::SaveCpu: return a.saveCpu == b.saveCpu;
         case SettingRow::Rumble: return a.rumble == b.rumble;
         case SettingRow::Mark: return a.mark == b.mark;
+        case SettingRow::WalkRadius: return a.walkPercent == b.walkPercent;
         case SettingRow::Count: break;
     }
     return true;
@@ -92,6 +107,7 @@ Settings settingsFrom(const Config& c) {
     s.saveCpu = c.backgroundSleepMs > 0;
     s.rumble = c.rumble;
     s.mark = c.mark;
+    s.walkPercent = int(std::lround(c.walkRadius * 100.0f));
     return s;
 }
 
@@ -115,6 +131,9 @@ Settings changeSetting(Settings s, SettingRow row, int dir) {
         case SettingRow::Mark:
             s.mark = MarkStyle(((int(s.mark) + (dir > 0 ? 1 : -1)) % kMarkStyles + kMarkStyles) % kMarkStyles);
             break;
+        case SettingRow::WalkRadius:  // a slider: it stops at both ends
+            s.walkPercent = std::clamp(s.walkPercent + (dir > 0 ? kWalkStep : -kWalkStep), kWalkMin, kWalkMax);
+            break;
         case SettingRow::Count: break;
     }
     return s;
@@ -133,6 +152,7 @@ Settings resetSetting(Settings s, SettingRow row) {
         case SettingRow::SaveCpu: s.saveCpu = d.saveCpu; break;
         case SettingRow::Rumble: s.rumble = d.rumble; break;
         case SettingRow::Mark: s.mark = d.mark; break;
+        case SettingRow::WalkRadius: s.walkPercent = d.walkPercent; break;
         case SettingRow::Count: break;
     }
     return s;
@@ -156,6 +176,7 @@ std::string settingValue(const Settings& s, SettingRow row, Lang lang) {
         case SettingRow::SaveCpu: return onOffText(s.saveCpu);
         case SettingRow::Rumble: return onOffText(s.rumble);
         case SettingRow::Mark: return markText(s.mark, lang);
+        case SettingRow::WalkRadius: return std::to_string(s.walkPercent) + "%";
         case SettingRow::Count: break;
     }
     return "";
@@ -179,6 +200,7 @@ void applySettings(const Settings& s, int sleepWhenOn, Config& c) {
     c.backgroundSleepMs = s.saveCpu ? sleepOn(sleepWhenOn) : 0;
     c.rumble = s.rumble;
     c.mark = s.mark;
+    c.walkRadius = float(s.walkPercent) / 100.0f;
 }
 
 }  // namespace uapad

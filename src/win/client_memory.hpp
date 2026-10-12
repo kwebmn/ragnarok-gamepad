@@ -18,6 +18,9 @@ bool load(uintptr_t p, T& out) {
     return true;
 }
 
+// True when [p, p + n) is committed memory of this process that can be written.
+bool writable(uintptr_t p, size_t n);
+
 // The client's code at `at` is byte for byte `sig`.
 bool matches(const uint8_t* sig, size_t n, uintptr_t at);
 

@@ -30,8 +30,15 @@ struct VirtualMouse {
     bool lmb = false;
 };
 
+// What the right stick asks of the camera this tick, in camera mode.
+struct CameraMove {
+    float turnDeg = 0;  // add to the camera's turn (the way the right mouse button drags it)
+    int zoomSteps = 0;  // wheel notches: > 0 closer, < 0 further
+};
+
 struct TickOutput {
     VirtualMouse mouse;
+    CameraMove camera;
     std::vector<Bytes> packets;  // requests for the map server, in order
     uint32_t mark = 0;           // a newly chosen monster to flag with "!" for the player; 0: none
     Rumble rumble = Rumble::None;
@@ -61,6 +68,16 @@ public:
     uint32_t target() const { return target_; }
     bool attacking() const { return wantAttack_; }
     bool approaching() const { return approach_.has_value(); }
+    bool cameraMode() const { return cameraMode_; }  // the right stick turns the camera instead of picking
+    void setWalkRadius(float fraction) { cfg_.walkRadius = fraction; }  // [stick] walk_radius, from the menu
+    // The client's own camera turn (radians, its own count) when it can be read from its memory; nothing
+    // otherwise. Once the walk samples show how it maps to the screen, the directions follow it at once.
+    void setClientTurn(std::optional<double> radians) {
+        if (radians)
+            camera_.setClientTurn(*radians);
+        else
+            camera_.clearClientTurn();
+    }
     const CameraYaw& camera() const { return camera_; }
 
 private:
@@ -99,6 +116,8 @@ private:
     // Takes the nearest monster as the target, telling the log what the pad saw; 0 when there is none.
     uint32_t takeNearest(const WorldState& world, uint32_t now, const char* why, TickOutput& out);
     void dropFarTarget(const WorldState& world, uint32_t now, TickOutput& out);
+    void toggleCamera(TickOutput& out);
+    void steerCamera(const PadState& pad, uint32_t now, TickOutput& out);
     void setTarget(uint32_t id, uint32_t now, TickOutput& out);
     bool targetAlive(const WorldState& world) const;
     void deny(TickOutput& out, const std::string& why);
@@ -122,6 +141,10 @@ private:
     bool aimLatched_ = false;  // R3 dropped the target: no aiming until the stick comes back
     uint32_t target_ = 0;
     bool picked_ = false;      // target_ was chosen with the right stick: presses keep it
+    bool cameraMode_ = false;
+    bool loggedCalibration_ = false;
+    std::optional<uint32_t> cameraMs_;  // the last camera tick, for the turn and zoom rates
+    float zoomCarry_ = 0;               // notches building up between ticks
     bool wantAttack_ = false;  // we want the server to be attacking target_
     bool attackSent_ = false;  // an attack request for target_ is in effect
     std::optional<uint32_t> engagedSinceMs_;  // our first attack request on target_: the give-up clock

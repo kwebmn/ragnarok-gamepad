@@ -68,3 +68,55 @@ TEST(camera_reset_forgets_the_turn) {
     CHECK_EQ(c.samples(), 0u);
     CHECK(near(c.radians(), 0));
 }
+
+namespace {
+
+constexpr double kDeg = 3.14159265358979323846 / 180.0;
+
+// A walk sample of a camera turned so that screen right is map bearing `yawDeg` (counter-clockwise from east).
+void sampleAt(CameraYaw& c, double yawDeg) {
+    c.addSample(100, 0, int(std::lround(8 * std::cos(yawDeg * kDeg))), int(std::lround(8 * std::sin(yawDeg * kDeg))));
+}
+
+bool nearDeg(double a, double b, double tolDeg) {
+    return std::fabs(std::remainder(a - b, 2 * 3.14159265358979323846)) < tolDeg * kDeg;
+}
+
+}  // namespace
+
+TEST(camera_follows_the_clients_turn_once_it_knows_the_sign) {
+    CameraYaw c;
+    for (double client : {0.0, 50.0, 100.0}) {  // the client's turn grows while the screen turns the other way
+        c.setClientTurn(client * kDeg);
+        sampleAt(c, -client);
+        sampleAt(c, -client);
+    }
+    CHECK(c.calibrated());
+    c.setClientTurn(30 * kDeg);  // turned again: no walking needed to follow it
+    CHECK(nearDeg(c.radians(), -30 * kDeg, 6));
+    double wx = 0, wy = 0;
+    c.toWorld(1, 0, wx, wy);  // screen right
+    CHECK(nearDeg(std::atan2(wy, wx), -30 * kDeg, 6));
+}
+
+TEST(camera_learns_a_plus_sign_and_an_offset) {
+    CameraYaw c;
+    for (double client : {10.0, 70.0, 140.0}) {
+        c.setClientTurn(client * kDeg);
+        sampleAt(c, client + 90);
+        sampleAt(c, client + 90);
+    }
+    CHECK(c.calibrated());
+    c.setClientTurn(200 * kDeg);
+    CHECK(nearDeg(c.radians(), 290 * kDeg, 6));
+}
+
+TEST(camera_needs_turns_far_apart_to_calibrate) {
+    CameraYaw c;
+    c.setClientTurn(10 * kDeg);
+    for (int i = 0; i < 6; ++i) sampleAt(c, 40);
+    CHECK(!c.calibrated());
+    CHECK(nearDeg(c.radians(), 40 * kDeg, 6));  // what the walk samples say, as before
+    c.clearClientTurn();
+    CHECK(nearDeg(c.radians(), 40 * kDeg, 6));
+}

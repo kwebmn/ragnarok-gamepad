@@ -24,6 +24,7 @@
 #include "core/session.hpp"
 #include "core/version.hpp"
 #include "win/client_bar.hpp"
+#include "win/client_camera.hpp"
 #include "win/client_mouse.hpp"
 #include "win/game_window.hpp"
 #include "win/hooks.hpp"
@@ -66,6 +67,9 @@ struct State {
     MouseGate gate;             // the real mouse's clicks and wheel reach the game only over it
     MouseKeys mouseKeys;        // the middle and side buttons as F1-F9
     bool loggedLock = false;
+    bool cameraSupported = false;  // the client's camera can be read and turned in its memory
+    bool loggedCameraFail = false;
+    int pendingZoom = 0;           // wheel notches the right stick asked for, one per mouse poll (> 0: closer)
     bool barSupported = false;  // the client's hotkey bar can be read from its memory
     bool loggedBarFail = false;
     DWORD lastBarMs = 0;
@@ -84,6 +88,8 @@ State& S() {
     static State s;
     return s;
 }
+
+constexpr LONG kWheelNotch = 120;
 
 // Hooks running off the game thread only record that the map socket carried traffic we could not
 // parse; the game thread turns that into Session::onUnobserved on its next tick.
@@ -302,6 +308,7 @@ bool saveSettings(const Settings& after) {
     applySettings(after, s.sleepWhenOn, s.cfg);
     if (s.cfg.backgroundSleepMs > 0) s.sleepWhenOn = s.cfg.backgroundSleepMs;
     s.session->setMark(s.cfg.mark);
+    s.session->setWalkRadius(s.cfg.walkRadius);
     if (old.borderless != s.cfg.borderless) {
         const bool ok = gamewindow::setBorderless(s.hwnd, s.cfg.borderless, s.cfg.position);
         LOG_INFO("borderless window %s%s", s.cfg.borderless ? "on" : "off", ok ? "" : ": not possible now");
@@ -453,7 +460,18 @@ void tick() {
     }
     followTheMouse(view.focused, now);
     view.paused = runMenu(pad, view, now);
+    double clientTurn = 0;
+    if (s.cameraSupported && clientcamera::readTurn(clientTurn))
+        s.session->setClientTurn(clientTurn * 3.14159265358979323846 / 180.0);
+    else
+        s.session->setClientTurn(std::nullopt);
     const TickOutput out = s.session->tick(pad, view, now);
+    if (out.camera.turnDeg != 0 && s.cameraSupported && !clientcamera::turn(out.camera.turnDeg) && !s.loggedCameraFail) {
+        s.loggedCameraFail = true;
+        LOG_INFO("camera: could not turn it now (not in the game?)");
+    }
+    s.pendingZoom = std::clamp(s.pendingZoom + out.camera.zoomSteps, -8, 8);
+    if (!view.focused) s.pendingZoom = 0;
     for (const std::string& note : out.notes) LOG_INFO("%s", note.c_str());
     for (const std::string& line : s.session->takeLog()) LOG_INFO("%s", line.c_str());
     if (s.cfg.rumble && out.rumble != Rumble::None) s.pad.rumble(out.rumble, now);
@@ -488,6 +506,9 @@ void init() {
         hooks::install();
         s.barSupported = clientbar::supported();
         s.mouseSupported = clientmouse::supported();
+        s.cameraSupported = clientcamera::supported();
+        LOG_INFO(s.cameraSupported ? "camera: turned in the client's memory"
+                                   : "camera: unknown client build; the right stick only zooms");
         LOG_INFO(s.mouseSupported ? "game cursor: read from the client's memory"
                                   : "game cursor: unknown client build; its position is estimated");
         LOG_INFO(s.barSupported ? "hotkey bar: read from the client's memory"
@@ -548,6 +569,10 @@ void onMouseState(DWORD cb, LPVOID data) {
             const MouseGate::Out pass = s.gate.filter(raw, over, s.cfg.focusClick, now);
             for (int i = 0; i < 4; ++i) st->rgbButtons[i] = (pass.buttons >> i) & 1 ? 0x80 : 0x00;
             if (!pass.wheel) st->lZ = 0;
+        }
+        if (s.pendingZoom != 0) {  // the right stick's zoom: one wheel notch a frame, the way the client counts it
+            st->lZ = s.pendingZoom > 0 ? -kWheelNotch : kWheelNotch;  // the client moves closer on a negative wheel
+            s.pendingZoom += s.pendingZoom > 0 ? -1 : 1;
         }
         const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;  // a click here means the player took over
         // Clicks are the menu's while it is open, and so is the click that closed it until the button is let go.

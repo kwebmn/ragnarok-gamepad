@@ -18,16 +18,31 @@ struct Settings {
     bool borderless = false;
     bool saveCpu = true;
     bool rumble = true;
-    MarkStyle mark = MarkStyle::Gasp;
+    MarkStyle mark = MarkStyle::Poison;
+    int walkPercent = 22;  // [stick] walk_radius, in percent of the window's shorter side
     bool operator==(const Settings& o) const {
         return lang == o.lang && lock == o.lock && focusClick == o.focusClick && mouseKeys == o.mouseKeys &&
-               borderless == o.borderless && saveCpu == o.saveCpu && rumble == o.rumble && mark == o.mark;
+               borderless == o.borderless && saveCpu == o.saveCpu && rumble == o.rumble && mark == o.mark &&
+               walkPercent == o.walkPercent;
     }
     bool operator!=(const Settings& o) const { return !(*this == o); }
 };
 
 // The rows of the Settings tab, in menu order.
-enum class SettingRow { Language, Lock, FocusClick, Middle, Button4, Button5, Borderless, SaveCpu, Rumble, Mark, Count };
+enum class SettingRow {
+    Language,
+    Lock,
+    FocusClick,
+    Middle,
+    Button4,
+    Button5,
+    Borderless,
+    SaveCpu,
+    Rumble,
+    Mark,
+    WalkRadius,
+    Count
+};
 constexpr size_t kSettingRows = size_t(SettingRow::Count);
 
 Settings settingsFrom(const Config& c);

@@ -13,7 +13,7 @@ namespace uapad {
 
 // What a gamepad button does.
 struct Action {
-    enum class Kind : uint8_t { None, Attack, Slot, Pickup, SitStand, ClearTarget };
+    enum class Kind : uint8_t { None, Attack, Slot, Pickup, SitStand, ClearTarget, CameraToggle };
     Kind kind = Kind::None;
     uint8_t slot = 0;  // Kind::Slot: hotkey index 0-26 (row slot / 9 + 1, key F(slot % 9 + 1))
 };
@@ -29,7 +29,8 @@ constexpr std::array<uint16_t, kBindableCount> kBindableButtons = {
 using Bindings = std::array<Action, kBindableCount>;  // by position in kBindableButtons
 
 Bindings defaultBindings();  // the 0.2 hunter layout
-// The action after (dir > 0) or before `a` in the menu's ring: none, attack, slots 1-27, pickup, sit, untarget.
+// The action after (dir > 0) or before `a` in the menu's ring: none, attack, slots 1-27, pickup, sit, untarget,
+// camera (the right stick: targets <-> camera).
 Action nextAction(Action a, int dir);
 
 const char* buttonToken(size_t i);  // in the file: "A", "LB", "UP"...

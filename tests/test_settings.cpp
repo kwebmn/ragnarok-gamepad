@@ -124,3 +124,22 @@ TEST(settings_target_mark_goes_round) {
     const auto edits = settingsEdits(defaultSettings(), changeSetting(defaultSettings(), SettingRow::Mark, +1), 10);
     CHECK(edits.size() == 1 && edits[0].section == "aim" && edits[0].key == "mark" && edits[0].value == "dpoison");
 }
+
+TEST(settings_walk_radius) {
+    Settings s = defaultSettings();
+    CHECK(settingLabel(SettingRow::WalkRadius, Lang::Ru) == "Радиус ходьбы");
+    CHECK(settingValue(s, SettingRow::WalkRadius, Lang::En) == "22%");
+    s = changeSetting(s, SettingRow::WalkRadius, +1);
+    CHECK(settingValue(s, SettingRow::WalkRadius, Lang::En) == "24%");
+    for (int i = 0; i < 30; ++i) s = changeSetting(s, SettingRow::WalkRadius, +1);
+    CHECK(settingValue(s, SettingRow::WalkRadius, Lang::En) == "44%");  // stops at the end, no wrapping
+    for (int i = 0; i < 30; ++i) s = changeSetting(s, SettingRow::WalkRadius, -1);
+    CHECK(settingValue(s, SettingRow::WalkRadius, Lang::En) == "10%");
+    CHECK(resetSetting(s, SettingRow::WalkRadius) == defaultSettings());
+    const auto edits = settingsEdits(defaultSettings(), s, 10);
+    CHECK(edits.size() == 1 && edits[0].section == "stick" && edits[0].key == "walk_radius" && edits[0].value == "0.10");
+    Config c;
+    applySettings(s, 10, c);
+    CHECK(c.walkRadius > 0.099f && c.walkRadius < 0.101f);
+    CHECK_EQ(settingsFrom(parseConfig("[stick]\nwalk_radius = 0.3\n")).walkPercent, 30);
+}

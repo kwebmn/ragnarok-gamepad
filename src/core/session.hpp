@@ -39,6 +39,8 @@ public:
     bool canInject() const;
     void markInjectBroken();
     void setMark(MarkStyle style);  // [aim] mark, changed from the menu
+    void setClientTurn(std::optional<double> radians) { controller_.setClientTurn(radians); }
+    void setWalkRadius(float fraction) { controller_.setWalkRadius(fraction); }
     // Appends the queued client-only packets (the "!" over a new target) to the `n` bytes the client is
     // about to receive on `s` in a buffer of `cap` bytes: only on the map socket, only while the server
     // stream is understood and stands at a packet boundary, only whole packets. Returns the bytes added.

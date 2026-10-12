@@ -30,24 +30,25 @@ TEST(bindings_default_is_the_hunter_layout) {
     CHECK(b[indexOf(kPadDown)] == slot(8));
     CHECK(b[indexOf(kPadLT)] == kind(Action::Kind::Pickup));
     CHECK(b[indexOf(kPadLeft)] == kind(Action::Kind::SitStand));
-    CHECK(b[indexOf(kPadR3)] == kind(Action::Kind::ClearTarget));
-    CHECK(b[indexOf(kPadL3)] == kind(Action::Kind::None));
+    CHECK(b[indexOf(kPadR3)] == kind(Action::Kind::CameraToggle));  // the right stick: targets <-> camera
+    CHECK(b[indexOf(kPadL3)] == kind(Action::Kind::ClearTarget));
 }
 
 TEST(bindings_action_ring_wraps) {
-    CHECK(nextAction(kind(Action::Kind::None), -1) == kind(Action::Kind::ClearTarget));
+    CHECK(nextAction(kind(Action::Kind::None), -1) == kind(Action::Kind::CameraToggle));
     CHECK(nextAction(kind(Action::Kind::Attack), +1) == slot(0));
     CHECK(nextAction(slot(0), -1) == kind(Action::Kind::Attack));
     CHECK(nextAction(slot(26), +1) == kind(Action::Kind::Pickup));
-    CHECK(nextAction(kind(Action::Kind::ClearTarget), +1) == kind(Action::Kind::None));
+    CHECK(nextAction(kind(Action::Kind::ClearTarget), +1) == kind(Action::Kind::CameraToggle));
+    CHECK(nextAction(kind(Action::Kind::CameraToggle), +1) == kind(Action::Kind::None));
     Action a = kind(Action::Kind::None);
-    for (int i = 0; i < 32; ++i) a = nextAction(a, +1);
-    CHECK(a == kind(Action::Kind::None));  // 32 actions in the ring
+    for (int i = 0; i < 33; ++i) a = nextAction(a, +1);
+    CHECK(a == kind(Action::Kind::None));  // 33 actions in the ring
 }
 
 TEST(bindings_tokens_round_trip) {
     Action a = kind(Action::Kind::None);
-    for (int i = 0; i < 32; ++i) {
+    for (int i = 0; i < 33; ++i) {
         const auto back = parseAction(actionToken(a));
         CHECK(back && *back == a);
         a = nextAction(a, +1);
@@ -130,4 +131,10 @@ TEST(bindings_saving_one_layout_keeps_the_others) {
     const Profiles def = withLayout(disk, 0, "", hunter);  // before login: the default layout
     CHECK(def.fallback == hunter);
     CHECK_EQ(def.characters.size(), 1u);
+}
+
+TEST(bindings_camera_toggle_token_and_labels) {
+    CHECK(actionToken(kind(Action::Kind::CameraToggle)) == "camera");
+    CHECK(actionLabel(kind(Action::Kind::CameraToggle), Lang::En) == "Camera / target");
+    CHECK(actionLabel(kind(Action::Kind::CameraToggle), Lang::Ru) == "Камера / цель");
 }

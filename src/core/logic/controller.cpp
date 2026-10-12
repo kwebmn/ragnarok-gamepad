@@ -18,6 +18,10 @@ constexpr double kAimOn = 0.6;
 constexpr double kAimOff = 0.35;
 constexpr double kAimSwitchMargin = 8.0;  // aim score points a new monster must win by
 constexpr uint32_t kSlotIntervalMs = 150;
+constexpr float kCameraDeadZone = 0.2f;
+constexpr float kCameraTurnDegPerSec = 120.0f;   // the right stick fully pushed
+constexpr float kCameraZoomStepsPerSec = 6.0f;   // wheel notches a second, fully pushed
+constexpr uint32_t kCameraMaxDtMs = 100;         // a stalled frame does not turn the camera in one jump
 constexpr uint32_t kApproachStepMs = 250;
 constexpr uint32_t kApproachTimeoutMs = 5000;
 constexpr uint32_t kRingSettleMs = 150;
@@ -200,8 +204,20 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         out.notes.push_back("mouse click: the pad stops its attack");
     }
     dropFarTarget(world, now, out);
+    if (camera_.calibrated() && !loggedCalibration_) {
+        loggedCalibration_ = true;
+        char text[96];
+        std::snprintf(text, sizeof text, "camera: follows the client's turn (sign %d, offset %.0f degrees)",
+                      camera_.calibratedSign(), camera_.calibratedOffset() * 180.0 / kPi);
+        out.notes.push_back(text);
+    }
     walk(pad, world, view, now, out);
-    aim(pad, world, now, out);
+    for (size_t i = 0; i < kBindableButtons.size(); ++i)  // before the stick: this tick's push goes to the new mode
+        if ((down & kBindableButtons[i]) && bindings_[i].kind == Action::Kind::CameraToggle) toggleCamera(out);
+    if (cameraMode_)
+        steerCamera(pad, now, out);
+    else
+        aim(pad, world, now, out);
     handleButtons(buttons, down, world, now, out);
     stepApproach(world, now, out);
     maintainTarget(attackHeld(), world, now, out);
@@ -296,8 +312,9 @@ void Controller::handleButtons(uint16_t held, uint16_t down, const WorldState& w
                                TickOutput& out) {
     armed_ = uint16_t((armed_ & held) | down);
     for (size_t i = 0; i < kBindableButtons.size(); ++i) {
-        if ((down & kBindableButtons[i]) && bindings_[i].kind != Action::Kind::None) {
-            approach_.reset();  // a new press overrides walking up to something
+        const Action::Kind k = bindings_[i].kind;
+        if ((down & kBindableButtons[i]) && k != Action::Kind::None && k != Action::Kind::CameraToggle) {
+            approach_.reset();  // a new press overrides walking up to something (turning the camera does not)
             break;
         }
     }
@@ -347,7 +364,43 @@ void Controller::fire(const Action& a, bool repeat, const WorldState& world, uin
         case Action::Kind::ClearTarget:
             clearTarget(world, now, out);
             break;
+        case Action::Kind::CameraToggle:  // switched before the stick was read this tick
+            break;
     }
+}
+
+void Controller::toggleCamera(TickOutput& out) {
+    cameraMode_ = !cameraMode_;
+    cameraMs_.reset();
+    zoomCarry_ = 0;
+    aiming_ = false;
+    aimLatched_ = true;  // the stick may still be pushed: back in target mode, no pick until it comes back
+    out.rumble = cameraMode_ ? Rumble::CameraOn : Rumble::CameraOff;
+    out.notes.push_back(cameraMode_ ? "right stick: camera" : "right stick: targets");
+}
+
+// Camera mode: left / right turns the camera like a right-button drag, up / down zooms like the wheel
+// (up: closer). Past a small dead zone the response grows with the square of the push.
+void Controller::steerCamera(const PadState& pad, uint32_t now, TickOutput& out) {
+    const uint32_t dt = cameraMs_ ? std::min<uint32_t>(now - *cameraMs_, kCameraMaxDtMs) : 0;
+    cameraMs_ = now;
+    auto curve = [](float v) {
+        const float m = std::fabs(v);
+        if (m <= kCameraDeadZone) return 0.0f;
+        const float t = std::min(1.0f, (m - kCameraDeadZone) / (1.0f - kCameraDeadZone));
+        return (v < 0 ? -1.0f : 1.0f) * t * t;
+    };
+    const float seconds = float(dt) / 1000.0f;
+    out.camera.turnDeg = curve(pad.rx) * kCameraTurnDegPerSec * seconds;
+    const float zy = curve(pad.ry);
+    if (zy == 0) {
+        zoomCarry_ = 0;
+        return;
+    }
+    zoomCarry_ += zy * kCameraZoomStepsPerSec * seconds;
+    const int steps = int(zoomCarry_);  // whole notches; the rest waits for the next tick
+    zoomCarry_ -= float(steps);
+    out.camera.zoomSteps = steps;
 }
 
 void Controller::attack(const WorldState& world, uint32_t now, TickOutput& out) {

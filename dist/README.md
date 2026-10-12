@@ -14,13 +14,14 @@ Languages: English (this file), [українська](README.uk.md), [русс�
 
 Delete `dinput.dll`, `uaro-pad.ini` and `uaro-pad-binds.ini` from the client folder. The module never changes the client itself.
 
-## Controls (version 0.4)
+## Controls (version 0.5)
 
 | Button | Action |
 |---|---|
 | Left stick | walk: the character goes where the stick points; let go to stop |
 | Right stick | pick the monster in the direction of the stick: a "!" appears over it and the pad gives a short buzz |
-| R3 (press the right stick) | clear the target, stop the attack and the walk up to a monster |
+| R3 (press the right stick) | switch the right stick between picking targets and turning the camera (two short buzzes: camera; one longer: targets) |
+| L3 (press the left stick) | clear the target, stop the attack and the walk up to a monster |
 | A | attack the nearest monster. A monster the pad is fighting right now, or one you picked with the right stick, stays the target. The attack goes on while the target lives and continues after skills. Hold A: once the target dies the next one is taken at once |
 | X, Y, B | slots F1, F2, F3 |
 | RB, RT | slots F4, F5 |
@@ -33,7 +34,7 @@ Delete `dinput.dll`, `uaro-pad.ini` and `uaro-pad-binds.ini` from the client fol
 
 A held slot button (and LT) repeats 4 times a second (`repeat_ms` in `uaro-pad.ini`).
 
-The attack stops when you walk with the left stick, press R3 or click with the real mouse; press A again afterwards (or hold A: the attack then goes on by itself as soon as you stop).
+The attack stops when you walk with the left stick, press L3 or click with the real mouse; press A again afterwards (or hold A: the attack then goes on by itself as soon as you stop).
 
 A and the slot buttons pick the nearest monster at the moment you press them; a monster you fought earlier and walked away from does not count. The log tells what the pad saw: a line like `attack: nearest of 3 within reach: …; we are at (x,y)`. "Nearest" means nearest in a straight line, the way you see it on the screen, and no further than 15 cells — about the edge of the screen (the server shows the client monsters much further away). A target that gets more than 15 cells away (you walked off, or it ran) is dropped, so the next A goes for the nearest monster. A hunter shooting from 9 cells keeps the target.
 
@@ -59,9 +60,11 @@ Skills and items go onto the hotkey bar as usual, with the mouse. By default the
 | F7 | D-pad ↑ | Improve Concentration |
 | F8, F9 | D-pad →, ↓ | as you like: fly wings, a second potion |
 
-### The right stick and a turned camera
+### The camera on the right stick
 
-The module assumes the camera is not turned (north up). If you turned it with the right mouse button, walk a little with the left stick in two or three directions — the module notices the turn and the right stick picks monsters where it points again.
+R3 switches the right stick to the camera: left / right turn it the way the right mouse button does (freely outdoors, 20 degrees either way indoors, as the client allows), up / down zoom (up: closer). R3 again — the right stick picks targets again.
+
+The module reads the camera's turn from the client. After the first turn, walk a few steps with the left stick: the module learns which way the client counts the turn (the log says `camera: follows the client's turn`), and from then on walking and the right stick follow any turn at once, also one made with the mouse.
 
 ## The Start menu
 
@@ -74,7 +77,9 @@ Start opens the menu "uaRO Pad — character name" over the game window. The gam
 
 ### Buttons
 
-A button can do: attack, any hotkey bar slot — F1–F9 of all three rows (you can see what is in the slot), pick up items, sit / stand, clear the target, or nothing. Start, Back and the sticks cannot be reassigned.
+A button can do: attack, any hotkey bar slot — F1–F9 of all three rows (you can see what is in the slot), pick up items, sit / stand, clear the target, switch the right stick (camera / target), or nothing. Start, Back and the sticks cannot be reassigned.
+
+If you saved a layout before 0.5, R3 still clears the target there: in the Buttons tab set R3 to "Camera / target" and L3 to "Clear target" (Y on a row gives it the new default).
 
 Each character has a layout of its own: the module recognises the character when you enter the game. A new character starts with the default layout; if you open the menu before entering a map, that default is what you edit. Layouts are kept in `uaro-pad-binds.ini` in the client folder; the module writes it.
 
@@ -89,6 +94,7 @@ Each character has a layout of its own: the module recognises the character when
 | Borderless window | no title bar and borders; position in `[window] position` | `[window] borderless` |
 | Save CPU in the background | while the game is behind other windows it does not keep a whole CPU core busy | `[window] background_sleep_ms` |
 | Vibration | the gamepad's rumble | `[rumble] enabled` |
+| Walk radius | where the left stick "clicks" to walk: a share of the window's shorter side (10–44%) | `[stick] walk_radius` |
 | Target mark | how the target shows for as long as it is the target (only you see it): poison's tint (the default), deadly poison, curse (red), stun (stars), sleep (zzz), silence, Sight's fireball or Ruwach's light — states the client draws, some with their own short sound; or "!" once when it is chosen; or nothing | `[aim] mark` |
 
 Settings work right after "Save" and are written into `uaro-pad.ini` — only the changed keys; comments and everything else in the file stay as they were.
@@ -124,7 +130,7 @@ The client normally captures the mouse; the module leaves it free (Mouse Freedom
 - The module does nothing: check that the client window is active and the module was not switched off with Back.
 - An antivirus removed or blocked `dinput.dll`: add the client folder to its exceptions.
 
-## Limitations of version 0.4
+## Limitations of version 0.5
 
 - The hotkey bar and the exact cursor are read from the memory of `uaRO.exe`. With another client build the log says `hotkey bar: unknown client build` (slot buttons do not work) and `game cursor: unknown client build` (the cursor position is estimated, as in 0.3).
 - Equipment on the bar (quick weapon swap) does not work from the gamepad.
@@ -132,4 +138,5 @@ The client normally captures the mouse; the module leaves it free (Mouse Freedom
 - An NPC with a monster sprite can become a target: when none of your hits land on it for 4 seconds, the module drops it.
 - Menus, NPC dialogues and chat — with the mouse and keyboard.
 - Mouse buttons 4 and 5 press only F1–F9 (not rows 2–3 or gamepad actions).
-- The camera turns with the mouse only; turning it with the right stick is planned for 0.5.
+- The camera on the right stick works with `uaRO.exe` only (the log says `camera: turned in the client's memory`); with another build the right stick only zooms.
+- Zooming goes through the mouse wheel: with the cursor over a game window (inventory, chat) the client scrolls that window instead.

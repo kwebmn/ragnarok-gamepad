@@ -11,7 +11,7 @@ namespace uapad {
 namespace {
 
 constexpr int kSlots = 27;
-constexpr int kRing = 2 + kSlots + 3;  // none, attack, 27 slots, pickup, sit, untarget
+constexpr int kRing = 2 + kSlots + 4;  // none, attack, 27 slots, pickup, sit, untarget, camera
 
 const char* const kTokens[kBindableCount] = {"A",  "B",  "X",  "Y",     "LB",   "RB",   "LT",
                                              "RT", "UP", "RIGHT", "DOWN", "LEFT", "L3", "R3"};
@@ -26,6 +26,7 @@ int ringIndex(Action a) {
         case Action::Kind::Pickup: return 2 + kSlots;
         case Action::Kind::SitStand: return 3 + kSlots;
         case Action::Kind::ClearTarget: return 4 + kSlots;
+        case Action::Kind::CameraToggle: return 5 + kSlots;
     }
     return 0;
 }
@@ -36,7 +37,8 @@ Action fromRing(int i) {
     if (i < 2 + kSlots) return Action{Action::Kind::Slot, uint8_t(i - 2)};
     if (i == 2 + kSlots) return Action{Action::Kind::Pickup, 0};
     if (i == 3 + kSlots) return Action{Action::Kind::SitStand, 0};
-    return Action{Action::Kind::ClearTarget, 0};
+    if (i == 4 + kSlots) return Action{Action::Kind::ClearTarget, 0};
+    return Action{Action::Kind::CameraToggle, 0};
 }
 
 std::string trim(const std::string& s) {
@@ -106,7 +108,8 @@ Bindings defaultBindings() {
     set(kPadDown, Action{Action::Kind::Slot, 8});
     set(kPadLT, Action{Action::Kind::Pickup, 0});
     set(kPadLeft, Action{Action::Kind::SitStand, 0});
-    set(kPadR3, Action{Action::Kind::ClearTarget, 0});
+    set(kPadL3, Action{Action::Kind::ClearTarget, 0});
+    set(kPadR3, Action{Action::Kind::CameraToggle, 0});
     return b;
 }
 
@@ -126,6 +129,7 @@ std::string actionToken(Action a) {
         case Action::Kind::Pickup: return "pickup";
         case Action::Kind::SitStand: return "sit";
         case Action::Kind::ClearTarget: return "untarget";
+        case Action::Kind::CameraToggle: return "camera";
     }
     return "none";
 }
@@ -137,6 +141,7 @@ std::optional<Action> parseAction(const std::string& token) {
     if (t == "pickup") return Action{Action::Kind::Pickup, 0};
     if (t == "sit") return Action{Action::Kind::SitStand, 0};
     if (t == "untarget") return Action{Action::Kind::ClearTarget, 0};
+    if (t == "camera") return Action{Action::Kind::CameraToggle, 0};
     if (t.rfind("slot ", 0) == 0) {
         const std::string digits = trim(t.substr(5));
         char* end = nullptr;
@@ -159,6 +164,7 @@ std::string actionLabel(Action a, Lang lang) {
         case Action::Kind::Pickup: return tr(lang, Text::Pickup);
         case Action::Kind::SitStand: return tr(lang, Text::SitStand);
         case Action::Kind::ClearTarget: return tr(lang, Text::ClearTarget);
+        case Action::Kind::CameraToggle: return tr(lang, Text::CameraToggle);
     }
     return "—";
 }
@@ -223,7 +229,8 @@ std::string formatProfiles(const Profiles& profiles) {
     std::ostringstream out;
     // ASCII only: the character names are in the system code page, and one file should have one encoding.
     out << "; uaRO Pad: button layouts per character. The pad writes this file from its menu (Start in the game).\n";
-    out << "; Edit it by hand only while the client is closed. Actions: none, attack, slot 1-27, pickup, sit, untarget.\n\n";
+    out << "; Edit it by hand only while the client is closed. Actions: none, attack, slot 1-27, pickup, sit, untarget,\n";
+    out << "; camera (the right stick switches between picking targets and turning the camera).\n\n";
     out << "[default]\n";
     writeSection(out, profiles.fallback);
     for (const auto& [id, c] : profiles.characters) {

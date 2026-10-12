@@ -358,7 +358,7 @@ TEST(session_mark_moves_with_the_target_and_gives_the_old_one_its_state_back) {
     CHECK(p.size() == 2 && unitState(p[0], 110000001, 0, 0));          // as the server showed it
     CHECK(p.size() == 2 && unitState(p[1], 110000002, 0, 0x4 | 0x2000));  // its own state plus the light
     s.tick(press(0), kView, 400);
-    s.tick(press(kPadR3), kView, 500);  // the target is cleared
+    s.tick(press(kPadL3), kView, 500);  // the target is cleared
     p = toClient(s, 510);
     CHECK(p.size() == 1 && unitState(p[0], 110000002, 0, 0x4));
 }

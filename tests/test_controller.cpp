@@ -35,6 +35,18 @@ TEST(ctl_walk_ring_point_and_stop) {
     CHECK(decodePos3(pkt(o, 0).data(), 5) == (Cell{100, 100}));
 }
 
+TEST(ctl_walk_radius_changes_at_once) {
+    Controller c(Config{});
+    WorldState w = world();
+    PadState right = pad();
+    right.lx = 1.0f;
+    TickOutput o = c.tick(right, w, view(), 1000);  // 800x600: 22% of 600 = 132 px right of the centre
+    CHECK_EQ(o.mouse.x, 400 + 132);
+    c.setWalkRadius(0.10f);
+    o = c.tick(right, w, view(), 1100);
+    CHECK_EQ(o.mouse.x, 400 + 60);
+}
+
 TEST(ctl_walk_stop_note_tells_where) {
     Controller c(Config{});
     WorldState w = world();
@@ -944,25 +956,25 @@ TEST(ctl_sit_stand_on_dpad_left) {
 
 // --- R3 and the right stick ---
 
-TEST(ctl_r3_clears_target_and_stops_attack) {
+TEST(ctl_l3_clears_target_and_stops_attack) {
     Controller c(Config{});
     WorldState w = world();
     addMob(w, 110000001, Cell{102, 100});
     c.tick(pad(kPadA), w, view(), 1000);
     c.tick(pad(), w, view(), 1100);
-    TickOutput o = c.tick(pad(kPadR3), w, view(), 1200);
+    TickOutput o = c.tick(pad(kPadL3), w, view(), 1200);
     CHECK_EQ(c.target(), 0u);
     CHECK(!c.attacking());
     CHECK_EQ(o.packets.size(), 1u);
     CHECK_EQ(pid(pkt(o, 0)), 0x0118);
     CHECK(o.rumble == Rumble::TargetCleared);
     c.tick(pad(), w, view(), 1300);
-    o = c.tick(pad(kPadR3), w, view(), 1400);  // nothing to clear
+    o = c.tick(pad(kPadL3), w, view(), 1400);  // nothing to clear
     CHECK(o.packets.empty());
     CHECK(o.rumble == Rumble::None);
 }
 
-TEST(ctl_r3_also_stops_a_walk_up) {
+TEST(ctl_l3_also_stops_a_walk_up) {
     Controller c(Config{});
     WorldState w = slotWorld();
     addMob(w, 110000001, Cell{112, 100});  // out of Fire Bolt's range
@@ -970,7 +982,7 @@ TEST(ctl_r3_also_stops_a_walk_up) {
     CHECK(c.approaching());
     w.apply(EvSelfWalk{Cell{100, 100}, Cell{111, 100}}, 1050);  // the server walks us
     c.tick(pad(), w, view(), 1100);
-    TickOutput o = c.tick(pad(kPadR3), w, view(), 1300);
+    TickOutput o = c.tick(pad(kPadL3), w, view(), 1300);
     CHECK(!c.approaching());
     CHECK_EQ(o.packets.size(), 2u);
     CHECK_EQ(pid(pkt(o, 0)), 0x0118);
@@ -1047,19 +1059,67 @@ TEST(ctl_new_target_cancels_a_walk_up_to_the_old_one) {
     CHECK(!c.approaching());  // the Fire Bolt does not go to the old one
 }
 
-TEST(ctl_r3_holds_aim_until_stick_is_released) {
+TEST(ctl_r3_switches_the_right_stick_to_the_camera) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{105, 100});  // east
+    TickOutput o = c.tick(pad(kPadR3), w, view(), 1000);
+    CHECK(c.cameraMode());
+    CHECK(o.rumble == Rumble::CameraOn);
+    float turned = 0;
+    for (uint32_t t = 1100; t <= 1600; t += 50) turned += c.tick(padR(1, 0), w, view(), t).camera.turnDeg;
+    CHECK_EQ(c.target(), 0u);  // the stick turns the camera now, it picks nothing
+    CHECK(turned > 40.0f && turned < 80.0f);  // about half a second at full speed
+    float back = 0;
+    for (uint32_t t = 1650; t <= 2150; t += 50) back += c.tick(padR(-1, 0), w, view(), t).camera.turnDeg;
+    CHECK(back < -40.0f);
+    c.tick(pad(), w, view(), 2200);
+    o = c.tick(pad(kPadR3), w, view(), 2300);
+    CHECK(!c.cameraMode());
+    CHECK(o.rumble == Rumble::CameraOff);
+    c.tick(pad(), w, view(), 2400);
+    c.tick(padR(1, 0), w, view(), 2500);
+    CHECK_EQ(c.target(), 110000001u);  // targets again
+}
+
+TEST(ctl_camera_zoom_steps_and_dead_zone) {
+    Controller c(Config{});
+    WorldState w = world();
+    c.tick(pad(kPadR3), w, view(), 1000);
+    c.tick(pad(), w, view(), 1050);
+    int in = 0;
+    for (uint32_t t = 1100; t <= 2100; t += 50) in += c.tick(padR(0, 1), w, view(), t).camera.zoomSteps;
+    CHECK(in >= 4 && in <= 8);  // stick up: closer, a few wheel notches a second
+    int out = 0;
+    for (uint32_t t = 2150; t <= 3150; t += 50) out += c.tick(padR(0, -1), w, view(), t).camera.zoomSteps;
+    CHECK(out <= -4);
+    TickOutput o = c.tick(padR(0.15f, 0.1f), w, view(), 3200);  // a resting stick does nothing
+    o = c.tick(padR(0.15f, 0.1f), w, view(), 3300);
+    CHECK(o.camera.turnDeg == 0.0f && o.camera.zoomSteps == 0);
+}
+
+TEST(ctl_camera_toggle_leaves_a_walk_up_alone) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{100, 107});  // 7 cells: Bash needs a walk up
+    c.tick(pad(kPadX), w, view(), 1000);
+    CHECK(c.approaching());
+    c.tick(pad(kPadX | kPadR3), w, view(), 1100);  // R3 while X is held: only the camera changes
+    CHECK(c.approaching());
+    CHECK(c.cameraMode());
+}
+
+TEST(ctl_back_to_targets_waits_for_the_stick_to_come_back) {
     Controller c(Config{});
     WorldState w = world();
     addMob(w, 110000001, Cell{105, 100});
-    c.tick(padR(1, 0), w, view(), 1000);
-    CHECK_EQ(c.target(), 110000001u);
-    TickOutput o = c.tick(padR(1, 0, kPadR3), w, view(), 1100);  // clicked the stick while pushing it
-    CHECK_EQ(c.target(), 0u);
-    CHECK(o.rumble == Rumble::TargetCleared);
-    c.tick(padR(1, 0), w, view(), 1200);
-    CHECK_EQ(c.target(), 0u);  // no re-pick until the stick comes back
-    c.tick(pad(), w, view(), 1300);
-    c.tick(padR(1, 0), w, view(), 1400);
+    c.tick(padR(1, 0, kPadR3), w, view(), 1000);  // clicked the stick while pushing it: camera
+    c.tick(padR(1, 0), w, view(), 1100);
+    c.tick(padR(1, 0, kPadR3), w, view(), 1200);  // and back
+    c.tick(padR(1, 0), w, view(), 1300);
+    CHECK_EQ(c.target(), 0u);  // no pick until the stick comes back
+    c.tick(pad(), w, view(), 1400);
+    c.tick(padR(1, 0), w, view(), 1500);
     CHECK_EQ(c.target(), 110000001u);
 }
 

@@ -80,6 +80,8 @@ void XInputPad::rumble(Rumble pattern, DWORD nowMs) {
         case Rumble::PadOn: pattern_ = {{60, 0x5000, 0x5000}, {60, 0, 0}, {60, 0x5000, 0x5000}}; break;
         case Rumble::PadOff: pattern_ = {{250, 0x8000, 0}}; break;
         case Rumble::Denied: pattern_ = {{40, 0, 0x3000}}; break;
+        case Rumble::CameraOn: pattern_ = {{40, 0x2000, 0x6000}, {50, 0, 0}, {40, 0x2000, 0x6000}}; break;
+        case Rumble::CameraOff: pattern_ = {{90, 0x6000, 0x2000}}; break;
         case Rumble::None: break;
     }
     seg_ = 0;

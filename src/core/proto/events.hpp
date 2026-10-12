@@ -56,9 +56,10 @@ struct EvSkills { std::vector<SkillInfo> skills; };               // 0x010f
 struct EvSkillUp { uint16_t id = 0; uint16_t lv = 0; uint16_t range = 0; };  // 0x010e
 struct EvHotkeys { std::array<Hotkey, 27> keys{}; };              // 0x02b9
 struct EvResurrect { uint32_t id = 0; };                          // 0x0148
+struct EvSelfSpeed { uint16_t speed = 0; };                       // 0x00b0 SP_SPEED, ms per cell
 
 using Event = std::variant<EvAuthOk, EvMapChange, EvSelfWalk, EvSetPos, EvVanish, EvActor, EvActorMove, EvPetInfo,
                            EvAction, EvSkillHit, EvGroundItem, EvGroundItemGone, EvInventory, EvItemAdd,
-                           EvItemRemove, EvItemUsed, EvSkills, EvSkillUp, EvHotkeys, EvResurrect>;
+                           EvItemRemove, EvItemUsed, EvSkills, EvSkillUp, EvHotkeys, EvResurrect, EvSelfSpeed>;
 
 }  // namespace uapad

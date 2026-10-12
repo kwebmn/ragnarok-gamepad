@@ -58,6 +58,7 @@ private:
     Cell selfFrom_;
     Cell selfTo_;
     uint32_t selfMoveStartMs_ = 0;
+    uint16_t selfSpeed_ = 150;  // ms per cell, from 0x00b0 SP_SPEED
     bool sitting_ = false;
     bool dead_ = false;
     uint32_t ownPet_ = 0;

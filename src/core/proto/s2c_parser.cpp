@@ -111,6 +111,9 @@ std::optional<Event> parseS2C(const Bytes& p) {
             }
             return ev;
         }
+        case 0x00b0:  // clif_updatestatus; only SP_SPEED (type 0) matters to us
+            if (n < 8 || rd16(d, 2) != 0 || rd32(d, 4) == 0) break;
+            return EvSelfSpeed{uint16_t(rd32(d, 4))};
         case 0x0148:
             if (n < 8) break;
             return EvResurrect{rd32(d, 2)};

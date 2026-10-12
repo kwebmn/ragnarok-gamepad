@@ -234,6 +234,20 @@ TEST(s2c_skills_and_hotkeys) {
 
 TEST(s2c_short_or_irrelevant_packets_are_ignored) {
     CHECK(!parseS2C(pkt(0x0073, 5)).has_value());
-    CHECK(!parseS2C(pkt(0x00b0, 8)).has_value());
+    CHECK(!parseS2C(pkt(0x00b1, 8)).has_value());
     CHECK(!parseS2C(Bytes{0x73}).has_value());
+}
+
+TEST(s2c_self_speed_status) {
+    Bytes b = pkt(0x00b0, 8);
+    wr16(b, 2, 0);    // SP_SPEED
+    wr32(b, 4, 112);  // e.g. with Increase AGI
+    auto e = parseS2C(b);
+    auto* sp = as<EvSelfSpeed>(e);
+    CHECK(sp && sp->speed == 112);
+    Bytes hp = pkt(0x00b0, 8);
+    wr16(hp, 2, 5);  // SP_HP: not ours to track
+    wr32(hp, 4, 300);
+    CHECK(!parseS2C(hp).has_value());
+    CHECK(!parseS2C(pkt(0x00b0, 8)).has_value());  // speed 0 is not a real value
 }

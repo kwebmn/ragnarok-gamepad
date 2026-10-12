@@ -122,3 +122,13 @@ TEST(world_skills_and_hotkeys) {
     CHECK_EQ(w.hotkey(99).id, 0u);
     CHECK_EQ(w.hotkey(-1).id, 0u);
 }
+
+TEST(world_self_speed_changes_interpolation) {
+    WorldState w = inGame();
+    w.apply(EvSelfSpeed{100}, 0);
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{110, 100}}, 1000);
+    CHECK(w.selfPos(1300) == (Cell{103, 100}));  // 100 ms per cell, not the default 150
+    w.apply(EvSelfSpeed{50}, 1300);              // sped up in the middle of the walk
+    CHECK(w.selfPos(1300) == (Cell{103, 100}));  // no jump at the change
+    CHECK(w.selfPos(1500) == (Cell{107, 100}));  // 4 more cells in 200 ms
+}

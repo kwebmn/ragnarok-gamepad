@@ -32,7 +32,7 @@ Cell WorldState::interpolate(Cell from, Cell to, uint16_t speed, uint32_t startM
 }
 
 Cell WorldState::selfPos(uint32_t nowMs) const {
-    return interpolate(selfFrom_, selfTo_, kDefaultSpeed, selfMoveStartMs_, nowMs);
+    return interpolate(selfFrom_, selfTo_, selfSpeed_, selfMoveStartMs_, nowMs);
 }
 
 std::optional<Cell> WorldState::actorPos(uint32_t id, uint32_t nowMs) const {
@@ -171,6 +171,10 @@ void WorldState::apply(const Event& ev, uint32_t nowMs) {
                 s.range = e.range;
             } else if constexpr (std::is_same_v<T, EvHotkeys>) {
                 hotkeys_ = e.keys;
+            } else if constexpr (std::is_same_v<T, EvSelfSpeed>) {
+                selfFrom_ = selfPos(nowMs);  // re-anchor the current walk at the old speed
+                selfMoveStartMs_ = nowMs;
+                selfSpeed_ = e.speed ? e.speed : kDefaultSpeed;
             } else if constexpr (std::is_same_v<T, EvResurrect>) {
                 if (e.id == selfId_) dead_ = false;
             }

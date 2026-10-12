@@ -62,6 +62,20 @@ bool loadString(uintptr_t obj, std::string& out) {
     return true;
 }
 
+// Item names are in the system code page; the pad's log and menu speak UTF-8.
+std::string toUtf8(const std::string& acp) {
+    if (acp.empty()) return acp;
+    const int wn = MultiByteToWideChar(CP_ACP, 0, acp.data(), int(acp.size()), nullptr, 0);
+    if (wn <= 0) return acp;
+    std::wstring wide(size_t(wn), L'\0');
+    MultiByteToWideChar(CP_ACP, 0, acp.data(), int(acp.size()), &wide[0], wn);
+    const int n = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wn, nullptr, 0, nullptr, nullptr);
+    if (n <= 0) return acp;
+    std::string utf8(size_t(n), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), wn, &utf8[0], n, nullptr, nullptr);
+    return utf8;
+}
+
 bool matches(const uint8_t* sig, size_t n, uintptr_t at) {
     return readable(at, n) && std::memcmp(reinterpret_cast<const void*>(at), sig, n) == 0;
 }
@@ -103,8 +117,8 @@ bool read(std::array<ClientBarSlot, kClientBarSlots>& out) {
             slot.level = level > 0 && level < 100 ? uint16_t(level) : 0;
         } else if (!name.empty() && name != "nothing") {
             slot.kind = ClientBarSlot::Kind::Item;
-            slot.name = name;
-            slot.itemIndex = findItem(name);
+            slot.itemIndex = findItem(name);  // matched on the client's own spelling
+            slot.name = toUtf8(name);
         }
         out[j] = slot;
     }

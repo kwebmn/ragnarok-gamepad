@@ -11,14 +11,17 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "core/config/bindings.hpp"
 #include "core/config/config.hpp"
 #include "core/logic/cursor_bridge.hpp"
+#include "core/logic/settings_menu.hpp"
 #include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
 #include "core/version.hpp"
 #include "win/client_bar.hpp"
 #include "win/hooks.hpp"
 #include "win/log.hpp"
+#include "win/overlay.hpp"
 #include "win/xinput_pad.hpp"
 
 namespace uapad::runtime {
@@ -44,6 +47,9 @@ struct State {
     bool checkedPointers = false;
     bool loggedBufferRead = false;
     bool loggedMark = false;
+    SettingsMenu menu;          // behind Start
+    uint16_t prevPadButtons = 0;
+    std::string bindsPath;      // uaro-pad-binds.ini
     bool barSupported = false;  // the client's hotkey bar can be read from its memory
     bool loggedBarFail = false;
     DWORD lastBarMs = 0;
@@ -110,6 +116,8 @@ void fail(const char* where) {
         PostMessageA(s.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(s.mouse.x, s.mouse.y));
     s.mouse = VirtualMouse{};
     s.pad.stopRumble();
+    s.menu.close();
+    overlay::hide();
 }
 
 template <class F>
@@ -199,6 +207,96 @@ void logPad(const PadState& p) {
     }
 }
 
+std::wstring widen(const std::string& text, UINT codepage) {
+    if (text.empty()) return std::wstring();
+    const int n = MultiByteToWideChar(codepage, 0, text.data(), int(text.size()), nullptr, 0);
+    if (n <= 0) return std::wstring();
+    std::wstring wide(size_t(n), L'\0');
+    MultiByteToWideChar(codepage, 0, text.data(), int(text.size()), &wide[0], n);
+    return wide;
+}
+
+overlay::View menuView() {
+    State& s = S();
+    overlay::View v;
+    const uint32_t id = s.session->charId();
+    const std::string& name = s.session->charName();  // the server's spelling: the system code page
+    v.title = L"uaRO Pad — " + (id == 0          ? std::wstring(L"раскладка по умолчанию")
+                                : !name.empty() ? widen(name, CP_ACP)
+                                                : L"персонаж " + std::to_wstring(id));
+    for (const SettingsMenu::Row& row : s.menu.rows()) {
+        v.buttons.push_back(widen(row.button, CP_UTF8));
+        v.actions.push_back(widen(row.action, CP_UTF8));
+    }
+    v.selected = s.menu.selected();
+    v.help = L"↑↓ выбрать    ←→ изменить    A сохранить    B отмена    Y по умолчанию";
+    return v;
+}
+
+void saveLayouts() {
+    State& s = S();
+    const std::string tmp = s.bindsPath + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        f << formatProfiles(s.session->profiles());
+        if (!f) {
+            LOG_ERROR("could not write %s", tmp.c_str());
+            return;
+        }
+    }
+    if (!MoveFileExA(tmp.c_str(), s.bindsPath.c_str(), MOVEFILE_REPLACE_EXISTING))
+        LOG_ERROR("could not replace %s (error %lu)", s.bindsPath.c_str(), (unsigned long)GetLastError());
+}
+
+// The settings menu behind Start. True while the menu had the pad this tick (the tick it closes included,
+// so the button that closed it does not reach the game as a new press).
+bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
+    State& s = S();
+    const uint16_t buttons = pad.connected ? pad.buttons : 0;
+    const uint16_t down = uint16_t(buttons & ~s.prevPadButtons);
+    s.prevPadButtons = buttons;
+    if (!s.menu.isOpen()) {
+        if (!(down & kPadStart) || !view.focused || !s.hwnd) return false;
+        s.menu.open(s.session->controller().bindings(), s.session->world().clientBarNames(), buttons, now, pad.lx,
+                    pad.ly);
+        s.session->askOwnName(now);
+        LOG_INFO("settings menu opened");
+    }
+    SettingsMenu::Result result = view.focused ? s.menu.update(pad, now) : SettingsMenu::Result::Cancel;
+    for (const overlay::MouseEvent& e : overlay::takeClicks()) {
+        switch (e.click) {
+            case overlay::Click::Select:
+                s.menu.select(e.row);
+                if (e.row == s.menu.rowCount() - 1) s.menu.resetAll();
+                break;
+            case overlay::Click::Previous:
+                s.menu.change(e.row, -1);
+                break;
+            case overlay::Click::Next:
+                s.menu.change(e.row, +1);
+                break;
+            case overlay::Click::Save:
+                result = SettingsMenu::Result::Save;
+                break;
+            case overlay::Click::Cancel:
+                result = SettingsMenu::Result::Cancel;
+                break;
+        }
+    }
+    if (result == SettingsMenu::Result::Save) {
+        s.session->saveBindings(s.menu.bindings());
+        saveLayouts();
+    }
+    if (result != SettingsMenu::Result::None) {
+        s.menu.close();
+        overlay::hide();
+        LOG_INFO(result == SettingsMenu::Result::Save ? "settings saved" : "settings closed without saving");
+        return true;
+    }
+    overlay::show(s.hwnd, menuView());
+    return true;
+}
+
 void tick() {
     State& s = S();
     const DWORD now = GetTickCount();
@@ -227,11 +325,12 @@ void tick() {
             LOG_INFO("could not read the client's hotkey bar this time");
         }
     }
-    const ViewInfo view = currentView();
+    ViewInfo view = currentView();
     if (view.focused != s.lastFocused) {  // the real mouse may have moved the client's cursor meanwhile
         s.lastFocused = view.focused;
         s.bridge.reset();
     }
+    view.paused = runMenu(pad, view, now);
     const TickOutput out = s.session->tick(pad, view, now);
     for (const std::string& note : out.notes) LOG_INFO("%s", note.c_str());
     for (const std::string& line : s.session->takeLog()) LOG_INFO("%s", line.c_str());
@@ -258,6 +357,10 @@ void init() {
         s.gameThread = GetCurrentThreadId();
         s.session = std::make_unique<Session>(s.cfg);
         if (!s.cfg.enabled) LOG_INFO("starts switched off ([general] enabled = 0); press Back to switch on");
+        s.bindsPath = dir + "uaro-pad-binds.ini";
+        const Profiles layouts = parseProfiles(readFile(s.bindsPath));
+        s.session->setProfiles(layouts);
+        LOG_INFO("layouts: %u character(s) in uaro-pad-binds.ini", unsigned(layouts.characters.size()));
         hooks::install();
         s.barSupported = clientbar::supported();
         LOG_INFO(s.barSupported ? "hotkey bar: read from the client's memory"
@@ -297,6 +400,7 @@ void onMouseState(DWORD cb, LPVOID data) {
         const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;
         if (realLmb && !s.realLmb) s.realClicked = true;
         s.realLmb = realLmb;
+        if (s.menu.isOpen()) std::memset(st->rgbButtons, 0, sizeof st->rgbButtons);  // clicks are the menu's
         if (!s.cfg.mouseFreedom && !s.mouse.active) {
             s.bridge.reset();  // the real mouse moves the client's cursor now; resync before driving it again
             return;

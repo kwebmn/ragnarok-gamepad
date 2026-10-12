@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace uapad {
@@ -14,15 +15,23 @@ public:
         uint8_t buttons = 0;  // bit i: rgbButtons[i] passes
         bool wheel = false;
     };
+    // A button that goes down this soon after the game window came to the front is the click that brought it.
+    static constexpr uint32_t kActivationMs = 300;
+
+    // Whether the game window is in front now. Call it on every mouse poll and every tick: the polls stop
+    // while the game is behind, so a tick sees it go and the next poll sees it come back. Going behind
+    // forgets the held buttons.
+    void watch(bool foreground, uint32_t nowMs);
     // `buttons`: bit i = rgbButtons[i] down. `overGame`: the Windows cursor is over the game's client area and
-    // nothing covers it there. `activated`: the game window became active since the last call; a button down
-    // then is the click that activated it and stays out unless `focusClick`.
-    Out filter(uint8_t buttons, bool overGame, bool activated, bool focusClick);
+    // nothing covers it there. The click that brought the window to the front stays out unless `focusClick`.
+    Out filter(uint8_t buttons, bool overGame, bool focusClick, uint32_t nowMs);
     void reset();  // forget the held buttons
 
 private:
     uint8_t passing_ = 0;  // went down over the game: pass until let go
     uint8_t blocked_ = 0;  // went down elsewhere, or activated the window: hidden until let go
+    bool foreground_ = false;
+    std::optional<uint32_t> frontSinceMs_;  // the last time the window came to the front
 };
 
 // The middle and the two side mouse buttons as keys F1-F9 for the client.

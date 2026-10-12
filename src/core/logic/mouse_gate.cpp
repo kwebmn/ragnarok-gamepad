@@ -2,11 +2,18 @@
 
 namespace uapad {
 
-MouseGate::Out MouseGate::filter(uint8_t buttons, bool overGame, bool activated, bool focusClick) {
+void MouseGate::watch(bool foreground, uint32_t nowMs) {
+    if (foreground && !foreground_) frontSinceMs_ = nowMs;
+    if (!foreground && foreground_) reset();
+    foreground_ = foreground;
+}
+
+MouseGate::Out MouseGate::filter(uint8_t buttons, bool overGame, bool focusClick, uint32_t nowMs) {
     passing_ &= buttons;  // let go: forgotten
     blocked_ &= buttons;
     const uint8_t fresh = uint8_t(buttons & ~(passing_ | blocked_));
-    if ((activated && !focusClick) || !overGame)
+    const bool activating = frontSinceMs_ && nowMs - *frontSinceMs_ < kActivationMs;
+    if ((activating && !focusClick) || !overGame)
         blocked_ |= fresh;
     else
         passing_ |= fresh;

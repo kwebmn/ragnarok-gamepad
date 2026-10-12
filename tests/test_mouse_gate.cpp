@@ -21,41 +21,69 @@ bool same(const std::vector<Ev>& a, const std::vector<Ev>& b) {
 
 TEST(gate_wheel_only_over_the_game) {
     MouseGate g;
-    CHECK(!g.filter(0, false, false, false).wheel);
-    CHECK(g.filter(0, true, false, false).wheel);
+    CHECK(!g.filter(0, false, false, 0).wheel);
+    CHECK(g.filter(0, true, false, 0).wheel);
 }
 
 TEST(gate_press_outside_is_hidden_until_let_go) {
     MouseGate g;
-    CHECK_EQ(g.filter(kLmb, false, false, false).buttons, 0);  // a click on the title bar or another window
-    CHECK_EQ(g.filter(kLmb, true, false, false).buttons, 0);   // still the same press, now over the game
-    CHECK_EQ(g.filter(0, true, false, false).buttons, 0);
-    CHECK_EQ(g.filter(kLmb, true, false, false).buttons, kLmb);  // a new press over the game
+    CHECK_EQ(g.filter(kLmb, false, false, 0).buttons, 0);  // a click on the title bar or another window
+    CHECK_EQ(g.filter(kLmb, true, false, 10).buttons, 0);  // still the same press, now over the game
+    CHECK_EQ(g.filter(0, true, false, 20).buttons, 0);
+    CHECK_EQ(g.filter(kLmb, true, false, 30).buttons, kLmb);  // a new press over the game
 }
 
 TEST(gate_drag_started_in_the_game_goes_on_outside) {
     MouseGate g;
-    CHECK_EQ(g.filter(kRmb, true, false, false).buttons, kRmb);
-    CHECK_EQ(g.filter(kRmb, false, false, false).buttons, kRmb);
-    CHECK_EQ(g.filter(kRmb | kLmb, false, false, false).buttons, kRmb);  // LMB went down outside
-    CHECK_EQ(g.filter(0, false, false, false).buttons, 0);
+    CHECK_EQ(g.filter(kRmb, true, false, 0).buttons, kRmb);
+    CHECK_EQ(g.filter(kRmb, false, false, 10).buttons, kRmb);
+    CHECK_EQ(g.filter(kRmb | kLmb, false, false, 20).buttons, kRmb);  // LMB went down outside
+    CHECK_EQ(g.filter(0, false, false, 30).buttons, 0);
 }
 
 TEST(gate_the_activating_click_stays_out) {
     MouseGate g;
-    CHECK_EQ(g.filter(kLmb, true, true, false).buttons, 0);
-    CHECK_EQ(g.filter(kLmb, true, false, false).buttons, 0);
-    CHECK_EQ(g.filter(0, true, false, false).buttons, 0);
-    CHECK_EQ(g.filter(kLmb, true, false, false).buttons, kLmb);
+    g.watch(true, 1000);  // the game window comes to the front
+    CHECK_EQ(g.filter(kLmb, true, false, 1000).buttons, 0);
+    CHECK_EQ(g.filter(kLmb, true, false, 1200).buttons, 0);  // still that press
+    CHECK_EQ(g.filter(0, true, false, 1250).buttons, 0);
+    CHECK_EQ(g.filter(kLmb, true, false, 1500).buttons, kLmb);
     MouseGate passing;
-    CHECK_EQ(passing.filter(kLmb, true, true, true).buttons, kLmb);  // focus_click = 1: as before
+    passing.watch(true, 1000);
+    CHECK_EQ(passing.filter(kLmb, true, true, 1000).buttons, kLmb);  // focus_click = 1: as before
+}
+
+TEST(gate_activating_click_on_the_first_poll_in_front) {
+    MouseGate g;  // the polls stop while the game is behind: a tick saw it go, the next poll sees it back
+    g.watch(true, 0);
+    CHECK_EQ(g.filter(0, true, false, 500).buttons, 0);
+    g.watch(false, 1000);
+    g.watch(true, 2000);
+    CHECK_EQ(g.filter(kLmb, true, false, 2000).buttons, 0);
+    CHECK_EQ(g.filter(kLmb, true, false, 2016).buttons, 0);
+}
+
+TEST(gate_activation_window_is_short) {
+    MouseGate g;
+    g.watch(true, 1000);
+    g.watch(true, 1100);  // still in front: no new activation
+    CHECK_EQ(g.filter(kLmb, true, false, 1400).buttons, kLmb);
+}
+
+TEST(gate_going_behind_forgets_held_buttons) {
+    MouseGate g;
+    g.watch(true, 0);
+    CHECK_EQ(g.filter(kLmb, false, false, 1000).buttons, 0);  // went down outside: hidden
+    g.watch(false, 1100);
+    g.watch(true, 5000);
+    CHECK_EQ(g.filter(kLmb, true, false, 5400).buttons, kLmb);  // a new press, not the old hidden one
 }
 
 TEST(gate_reset_forgets_held_buttons) {
     MouseGate g;
-    g.filter(kLmb, false, false, false);
+    g.filter(kLmb, false, false, 0);
     g.reset();
-    CHECK_EQ(g.filter(kLmb, true, false, false).buttons, kLmb);
+    CHECK_EQ(g.filter(kLmb, true, false, 10).buttons, kLmb);
 }
 
 TEST(keys_a_side_button_holds_its_key) {

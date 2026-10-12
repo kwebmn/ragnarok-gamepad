@@ -64,8 +64,6 @@ struct State {
     bool loggedExact = false;
     MouseGate gate;             // the real mouse's clicks and wheel reach the game only over it
     MouseKeys mouseKeys;        // the middle and side buttons as F1-F9
-    bool wasForeground = false;
-    DWORD activatedAtMs = 0;    // when the game window last became the active one (0: never)
     bool loggedLock = false;
     bool barSupported = false;  // the client's hotkey bar can be read from its memory
     bool loggedBarFail = false;
@@ -85,9 +83,6 @@ State& S() {
     static State s;
     return s;
 }
-
-// A button that goes down this soon after the game window became active is the click that activated it.
-constexpr DWORD kActivationClickMs = 300;
 
 // Hooks running off the game thread only record that the map socket carried traffic we could not
 // parse; the game thread turns that into Session::onUnobserved on its next tick.
@@ -374,9 +369,7 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
 // cursor kept inside the window.
 void followTheMouse(bool foreground, DWORD now) {
     State& s = S();
-    if (foreground && !s.wasForeground) s.activatedAtMs = now ? now : 1;
-    if (!foreground && s.wasForeground) s.gate.reset();
-    s.wasForeground = foreground;
+    s.gate.watch(foreground, now);  // the ticks see the game go behind: its mouse polls stop then
     if (!s.hwnd) return;
     const bool keysWanted = s.cfg.mouseKeys[0] || s.cfg.mouseKeys[1] || s.cfg.mouseKeys[2];
     uint8_t held = 0;
@@ -521,10 +514,13 @@ void onMouseState(DWORD cb, LPVOID data) {
             if (st->rgbButtons[i] & 0x80) raw |= uint8_t(1u << i);
         // With mouse freedom DirectInput reports the mouse wherever the cursor is while the game is active:
         // only clicks and the wheel over the game window reach it, and not the click that activated it.
+        // The open menu is not the game. The window's coming to the front is checked on every poll: the first
+        // poll after a click on the window carries that click.
         if (s.cfg.mouseFreedom) {
-            const bool over = gamewindow::cursorOverGame(s.hwnd, screen);
-            const bool activating = s.activatedAtMs != 0 && GetTickCount() - s.activatedAtMs < kActivationClickMs;
-            const MouseGate::Out pass = s.gate.filter(raw, over, activating, s.cfg.focusClick);
+            const DWORD now = GetTickCount();
+            s.gate.watch(GetForegroundWindow() == s.hwnd, now);
+            const bool over = !s.menu.isOpen() && gamewindow::cursorOverGame(s.hwnd, screen);
+            const MouseGate::Out pass = s.gate.filter(raw, over, s.cfg.focusClick, now);
             for (int i = 0; i < 4; ++i) st->rgbButtons[i] = (pass.buttons >> i) & 1 ? 0x80 : 0x00;
             if (!pass.wheel) st->lZ = 0;
         }

@@ -15,6 +15,10 @@ public:
     };
 
     Step step(int targetX, int targetY, int width, int height);
+    // When the client's own cursor (`cursorX`, `cursorY`) and the game's resolution (`gameW` x `gameH`) can be
+    // read from its memory: the target, in pixels of the `width` x `height` client area, is scaled to the
+    // game's pixels and the cursor goes straight onto it. Never settling; a later step() carries on from here.
+    Step stepExact(int targetX, int targetY, int width, int height, int gameW, int gameH, int cursorX, int cursorY);
     void reset() { synced_ = false; }
     bool synced() const { return synced_; }
 

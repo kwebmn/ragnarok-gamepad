@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "core/config/config.hpp"
 #include "core/world/world.hpp"
 
 namespace uapad {
@@ -21,9 +22,10 @@ struct SlotDecision {
     std::string reason;      // Deny: why, for the log
 };
 
-// What a hotkey slot does right now. `target`: the current live target or 0; `nearest`: the nearest
-// candidate or 0 (used only by enemy skills when there is no target).
+// What a hotkey slot does right now. `target`: the current live target or 0; `nearest`: the monster to
+// use when there is no target (it becomes the target), or 0. `cfg` lists the skills cast under ourselves
+// (ground_self) and the traps, which go two steps towards the target.
 SlotDecision decideSlot(const Hotkey& key, const WorldState& world, uint32_t target, uint32_t nearest,
-                        const std::vector<uint16_t>& groundSelf, uint32_t nowMs);
+                        const Config& cfg, uint32_t nowMs);
 
 }  // namespace uapad

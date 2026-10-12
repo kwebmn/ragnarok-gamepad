@@ -1,6 +1,8 @@
 #include "core/logic/slots.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 #include "core/proto/c2s.hpp"
 
@@ -18,17 +20,26 @@ SlotDecision deny(std::string why) {
     return d;
 }
 
-SlotDecision send(Bytes packet) {
+SlotDecision send(Bytes packet, uint32_t newTarget = 0) {
     SlotDecision d;
     d.kind = SlotDecision::Kind::Send;
     d.packet = std::move(packet);
+    d.newTarget = newTarget;
     return d;
+}
+
+bool listed(const std::vector<uint16_t>& ids, uint16_t id) { return std::find(ids.begin(), ids.end(), id) != ids.end(); }
+
+// The cell `steps` steps from `from` in the direction of the vector `dir` (not zero).
+Cell stepsToward(Cell from, Cell dir, int steps) {
+    const double longest = double(std::max(std::abs(dir.x), std::abs(dir.y)));
+    return Cell{from.x + int(std::lround(steps * dir.x / longest)), from.y + int(std::lround(steps * dir.y / longest))};
 }
 
 }  // namespace
 
 SlotDecision decideSlot(const Hotkey& key, const WorldState& world, uint32_t target, uint32_t nearest,
-                        const std::vector<uint16_t>& groundSelf, uint32_t nowMs) {
+                        const Config& cfg, uint32_t nowMs) {
     if (key.id == 0) return deny("empty slot");
     if (key.type == 0) {
         auto item = world.findUsable(uint16_t(key.id));
@@ -62,9 +73,26 @@ SlotDecision decideSlot(const Hotkey& key, const WorldState& world, uint32_t tar
     };
 
     if (sk->inf & kInfGround) {
-        const bool underSelf = std::find(groundSelf.begin(), groundSelf.end(), id) != groundSelf.end();
-        if (underSelf || target == 0) return send(buildSkillToPos(id, lv, me));
-        return castOn(target, true, 0);
+        if (listed(cfg.groundSelf, id)) return send(buildSkillToPos(id, lv, me));
+        const uint32_t at = target != 0 ? target : nearest;
+        const uint32_t adopt = target != 0 ? 0 : nearest;
+        if (listed(cfg.traps, id)) {
+            // The server refuses a trap with any character within 1 cell, us included: put it two steps
+            // towards the monster (or along our last step), always within the trap range of 3.
+            std::optional<Cell> dir;
+            uint32_t from = 0;
+            if (at != 0) {
+                if (auto pos = world.actorPos(at, nowMs); pos && *pos != me) {
+                    dir = Cell{pos->x - me.x, pos->y - me.y};
+                    from = adopt;
+                }
+            }
+            if (!dir) dir = world.lastMove();
+            if (!dir) return deny("no direction to put trap " + std::to_string(id) + " in");
+            return send(buildSkillToPos(id, lv, stepsToward(me, *dir, std::min(2, reach))), from);
+        }
+        if (at == 0) return send(buildSkillToPos(id, lv, me));
+        return castOn(at, true, adopt);
     }
     if (sk->inf & kInfEnemy) {
         if (target != 0) return castOn(target, false, 0);

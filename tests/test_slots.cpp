@@ -4,10 +4,15 @@
 
 using namespace uapad;
 
-static const std::vector<uint16_t> kGroundSelf{12, 25, 27, 70};
+static SlotDecision slot(const WorldState& w, int index, uint32_t target, uint32_t nearest,
+                         const Config& cfg = Config{}) {
+    return decideSlot(w.hotkey(index), w, target, nearest, cfg, 0);
+}
 
-static SlotDecision slot(const WorldState& w, int index, uint32_t target, uint32_t nearest) {
-    return decideSlot(w.hotkey(index), w, target, nearest, kGroundSelf, 0);
+// The cell of a 0x0113 request; (-1, -1) for anything else.
+static Cell cellOf(const SlotDecision& d) {
+    if (d.packet.size() != 22 || rd16(d.packet.data(), 0) != 0x0113) return Cell{-1, -1};
+    return Cell{int(rd16(d.packet.data(), 12)), int(rd16(d.packet.data(), 20))};
 }
 
 TEST(slots_item_uses_inventory_index) {
@@ -96,9 +101,6 @@ TEST(slots_ground_skill_cells) {
     CHECK_EQ(rd16(d.packet.data(), 9), 12);
     CHECK_EQ(rd16(d.packet.data(), 12), 100);
     CHECK_EQ(rd16(d.packet.data(), 20), 100);
-    d = slot(w, 3, 0, 110000001);  // ground skills never pick the nearest monster on their own
-    CHECK_EQ(rd16(d.packet.data(), 12), 100);
-    CHECK_EQ(d.newTarget, 0u);
 }
 
 TEST(slots_ground_skill_out_of_range_approaches) {
@@ -108,4 +110,53 @@ TEST(slots_ground_skill_out_of_range_approaches) {
     CHECK(d.kind == SlotDecision::Kind::Approach);
     CHECK(d.ground);
     CHECK_EQ(d.range, 9);
+}
+
+TEST(slots_ground_skill_takes_nearest) {
+    WorldState w = fx::slotWorld();
+    fx::addMob(w, 110000001, Cell{104, 102});
+    SlotDecision d = slot(w, 3, 0, 110000001);  // Thunderstorm without a target: on the nearest monster
+    CHECK(d.kind == SlotDecision::Kind::Send);
+    CHECK(cellOf(d) == (Cell{104, 102}));
+    CHECK_EQ(d.newTarget, 110000001u);  // which becomes the target
+    d = slot(w, 3, 0, 0);               // no monsters at all: under ourselves
+    CHECK(cellOf(d) == (Cell{100, 100}));
+    CHECK_EQ(d.newTarget, 0u);
+}
+
+TEST(slots_trap_two_steps_toward_target) {
+    WorldState w = fx::slotWorld();
+    fx::addMob(w, 110000001, Cell{105, 103});
+    SlotDecision d = slot(w, 8, 110000001, 0);  // Ankle Snare
+    CHECK(d.kind == SlotDecision::Kind::Send);
+    CHECK_EQ(rd16(d.packet.data(), 0), 0x0113);
+    CHECK_EQ(rd16(d.packet.data(), 9), 117);
+    CHECK(cellOf(d) == (Cell{102, 101}));  // two steps towards (105, 103), never on a monster or on us
+    CHECK_EQ(d.newTarget, 0u);
+    fx::addMob(w, 110000002, Cell{100, 92});
+    d = slot(w, 8, 0, 110000002);  // no target: towards the nearest monster, which becomes the target
+    CHECK(cellOf(d) == (Cell{100, 98}));
+    CHECK_EQ(d.newTarget, 110000002u);
+    fx::addMob(w, 110000003, Cell{140, 100});
+    d = slot(w, 8, 110000003, 0);  // far away: no walking, the trap still goes next to us
+    CHECK(d.kind == SlotDecision::Kind::Send);
+    CHECK(cellOf(d) == (Cell{102, 100}));
+    Config noTraps;
+    noTraps.traps.clear();  // not listed as a trap: an ordinary ground skill aimed at the target's cell
+    d = slot(w, 8, 110000001, 0, noTraps);
+    CHECK(d.kind == SlotDecision::Kind::Approach);  // 5 cells away, range 3
+    CHECK(d.ground);
+    CHECK_EQ(d.actor, 110000001u);
+}
+
+TEST(slots_trap_without_monsters_uses_last_step) {
+    WorldState w = fx::slotWorld();
+    SlotDecision d = slot(w, 8, 0, 0);  // no monster and no step on this map yet: nowhere to put it
+    CHECK(d.kind == SlotDecision::Kind::Deny);
+    CHECK(!d.reason.empty());
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{97, 104}}, 0);  // a step to the north-west
+    d = slot(w, 8, 0, 0);
+    CHECK(d.kind == SlotDecision::Kind::Send);
+    CHECK(cellOf(d) == (Cell{98, 102}));
+    CHECK_EQ(d.newTarget, 0u);
 }

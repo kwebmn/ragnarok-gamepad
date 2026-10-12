@@ -25,17 +25,20 @@ inline void addMob(WorldState& w, uint32_t id, Cell at, uint16_t cls = 1002) {
 inline WorldState slotWorld() {
     WorldState w = world();
     EvHotkeys hk;
-    hk.keys[0] = Hotkey{1, 5, 10};   // LT+A: Bash (enemy, range 1)
-    hk.keys[1] = Hotkey{1, 28, 10};  // LT+B: Heal (support), learned only up to lv 5
-    hk.keys[2] = Hotkey{1, 12, 3};   // LT+X: Safety Wall (ground, in ground_self)
-    hk.keys[3] = Hotkey{1, 21, 5};   // LT+Y: Thunderstorm (ground)
-    hk.keys[4] = Hotkey{0, 501, 0};  // RT+A: Red Potion
-    hk.keys[5] = Hotkey{0, 502, 0};  // RT+B: Orange Potion (not in inventory)
-    hk.keys[6] = Hotkey{1, 19, 5};   // RT+X: Fire Bolt (enemy, range 9)
-    hk.keys[9] = Hotkey{1, 2, 1};    // LB+A: Sword Mastery (passive)
+    hk.keys[0] = Hotkey{1, 5, 10};   // F1, X: Bash (enemy, range 1)
+    hk.keys[1] = Hotkey{1, 28, 10};  // F2, Y: Heal (support), learned only up to lv 5
+    hk.keys[2] = Hotkey{1, 12, 3};   // F3, B: Safety Wall (ground, in ground_self)
+    hk.keys[3] = Hotkey{1, 21, 5};   // F4, RB: Thunderstorm (ground)
+    hk.keys[4] = Hotkey{0, 501, 0};  // F5, RT: Red Potion
+    hk.keys[5] = Hotkey{0, 502, 0};  // F6, LB: Orange Potion (not in inventory)
+    hk.keys[6] = Hotkey{1, 19, 5};   // F7, D-pad up: Fire Bolt (enemy, range 9)
+    //          [7]                     F8, D-pad right: empty
+    hk.keys[8] = Hotkey{1, 117, 5};  // F9, D-pad down: Ankle Snare (ground, a trap, range 3)
+    hk.keys[9] = Hotkey{1, 2, 1};    // second row: Sword Mastery (passive)
     w.apply(hk, 0);
     w.apply(EvSkills{{SkillInfo{5, 1, 10, 1}, SkillInfo{28, 16, 5, 9}, SkillInfo{12, 2, 10, 9},
-                      SkillInfo{21, 2, 5, 9}, SkillInfo{19, 1, 10, 9}, SkillInfo{2, 0, 10, 0}}},
+                      SkillInfo{21, 2, 5, 9}, SkillInfo{19, 1, 10, 9}, SkillInfo{117, 2, 5, 3},
+                      SkillInfo{2, 0, 10, 0}}},
             0);
     w.apply(EvInventory{{InvEntry{2, 501, 15, false}}}, 0);
     return w;

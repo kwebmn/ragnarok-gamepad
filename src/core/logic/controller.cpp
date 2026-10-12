@@ -187,7 +187,7 @@ void Controller::useSlot(int slot, const WorldState& world, uint32_t now, TickOu
         auto c = targetCandidates(world, now, blacklist_);
         if (!c.empty()) nearest = c.front();
     }
-    SlotDecision d = decideSlot(key, world, target, nearest, cfg_.groundSelf, now);
+    SlotDecision d = decideSlot(key, world, target, nearest, cfg_, now);
     if (d.newTarget != 0) setTarget(d.newTarget, out);
     switch (d.kind) {
         case SlotDecision::Kind::Deny:

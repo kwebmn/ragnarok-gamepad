@@ -1,3 +1,7 @@
+#include <cmath>
+
+#include "core/proto/c2s.hpp"
+#include "core/proto/packet_tables.hpp"
 #include "core/session.hpp"
 #include "test.hpp"
 
@@ -49,6 +53,14 @@ PadState pressA() {
     return p;
 }
 
+// The map server's answer to a name request for `id` (0x0095).
+Bytes nameReply(uint32_t id) {
+    Bytes b(size_t(s2cLength(0x0095)), 0);
+    wr16(b, 0, 0x0095);
+    wr32(b, 2, id);
+    return b;
+}
+
 }  // namespace
 
 TEST(session_ignores_login_traffic_and_finds_map_socket) {
@@ -73,7 +85,7 @@ TEST(session_tick_queues_requests_for_injection) {
     TickOutput o = s.tick(pressA(), kView, 100);
     CHECK_EQ(o.packets.size(), 1u);
     std::vector<Bytes> ready = s.takeInjectable(100);
-    CHECK_EQ(ready.size(), 1u);
+    CHECK_EQ(ready.size(), 2u);  // the attack and the name request behind the new target's "!"
     CHECK(!ready.empty() && rd16(ready[0].data(), 0) == 0x0190);
     CHECK(s.takeInjectable(110).empty());
 }
@@ -89,7 +101,7 @@ TEST(session_injection_waits_for_client_packet_boundary) {
     Bytes rest(14, 0);
     s.onClientSent(kMap, rest.data(), rest.size(), 120);
     CHECK(s.canInject());
-    CHECK_EQ(s.takeInjectable(130).size(), 1u);
+    CHECK_EQ(s.takeInjectable(130).size(), 2u);  // the attack and the name request
 }
 
 TEST(session_drops_requests_that_waited_too_long) {
@@ -191,4 +203,88 @@ TEST(session_unobserved_server_data_stops_parsing) {
     encodePos3(mob, 46, Cell{103, 100}, 0);
     s.onServerData(kMap, mob.data(), mob.size(), 20);
     CHECK_EQ(s.world().actors().size(), 1u);  // the stream is no longer trusted: nothing new is parsed
+}
+
+TEST(session_mark_rides_along_with_the_server_reply) {
+    Session s{Config{}};
+    connect(s);
+    TickOutput o = s.tick(pressA(), kView, 100);  // the Poring becomes the target
+    CHECK_EQ(o.mark, 110000001u);
+    std::vector<Bytes> ready = s.takeInjectable(100);
+    CHECK_EQ(ready.size(), 2u);  // the attack, then a name request: the server answers right away
+    CHECK(ready.size() == 2 && rd16(ready[1].data(), 0) == 0x008c && rd32(ready[1].data(), 7) == 110000001u);
+    uint8_t buf[64] = {0};
+    const Bytes reply = nameReply(110000001);
+    std::copy(reply.begin(), reply.end(), buf);
+    s.onServerData(kMap, buf, reply.size(), 120);
+    CHECK_EQ(s.appendForClient(kMap, buf, reply.size(), sizeof buf, 120), 7u);
+    CHECK_EQ(rd16(buf, reply.size()), 0x00c0);  // "!" over the Poring, after the whole reply
+    CHECK_EQ(rd32(buf, reply.size() + 2), 110000001u);
+    CHECK_EQ(buf[reply.size() + 6], 0);
+    CHECK_EQ(s.appendForClient(kMap, buf, reply.size() + 7, sizeof buf, 130), 0u);  // shown once
+}
+
+TEST(session_mark_waits_for_a_packet_boundary_and_room) {
+    Session s{Config{}};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    const Bytes reply = nameReply(110000001);
+    uint8_t buf[64] = {0};
+    s.onServerData(kMap, reply.data(), 10, 110);  // the client gets the first 10 bytes of the reply
+    CHECK_EQ(s.appendForClient(kMap, buf, 10, sizeof buf, 110), 0u);  // never inside a packet
+    s.onServerData(kMap, reply.data() + 10, reply.size() - 10, 120);
+    const size_t n = reply.size() - 10;
+    CHECK_EQ(s.appendForClient(kMap, buf, n, n + 6, 120), 0u);  // a boundary, but no room for 7 bytes
+    CHECK_EQ(s.appendForClient(kMap, buf, n, n + 7, 120), 7u);  // exactly enough room
+}
+
+TEST(session_mark_only_on_the_map_socket_and_only_while_fresh) {
+    Session s{Config{}};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    uint8_t buf[64] = {0};
+    CHECK_EQ(s.appendForClient(kLogin, buf, 0, sizeof buf, 150), 0u);  // another socket
+    CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 1200), 0u);   // over a second old: dropped
+    CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 1210), 0u);
+}
+
+TEST(session_mark_off_in_config) {
+    Config cfg;
+    cfg.mark = false;
+    Session s{cfg};
+    connect(s);
+    TickOutput o = s.tick(pressA(), kView, 100);
+    CHECK_EQ(o.mark, 110000001u);  // the controller still reports the new target...
+    CHECK_EQ(s.takeInjectable(100).size(), 1u);  // ...but no name request goes out
+    uint8_t buf[64] = {0};
+    CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 110), 0u);  // and no "!"
+}
+
+TEST(session_mark_dropped_with_the_connection_or_a_desync) {
+    Session s{Config{}};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    Bytes junk = {0x01, 0x00, 0xaa, 0xbb};  // 0x0001 is not a server packet
+    s.onServerData(kMap, junk.data(), junk.size(), 110);
+    uint8_t buf[64] = {0};
+    CHECK_EQ(s.appendForClient(kMap, buf, junk.size(), sizeof buf, 110), 0u);  // the stream is lost
+    Session s2{Config{}};
+    connect(s2);
+    s2.tick(pressA(), kView, 100);
+    s2.onClosed(kMap);
+    connect(s2);  // a new map server connection
+    CHECK_EQ(s2.appendForClient(kMap, buf, 0, sizeof buf, 150), 0u);
+}
+
+TEST(session_client_walk_requests_teach_the_camera) {
+    Session s{Config{}};
+    connect(s);
+    PadState walk;
+    walk.connected = true;
+    walk.lx = 1.0f;
+    s.tick(walk, kView, 100);  // the pad holds the walking point right of the centre
+    const Bytes req = buildWalk(Cell{100, 107});
+    s.onClientSent(kMap, req.data(), req.size(), 110);  // and the client walks north
+    CHECK_EQ(s.controller().camera().samples(), 1u);
+    CHECK(std::fabs(s.controller().camera().radians() - 3.14159265358979323846 / 2) < 1e-6);
 }

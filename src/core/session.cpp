@@ -1,14 +1,17 @@
 #include "core/session.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "core/proto/c2s.hpp"
+#include "core/proto/s2c_build.hpp"
 #include "core/proto/s2c_parser.hpp"
 
 namespace uapad {
 namespace {
 
 constexpr uint32_t kStaleMs = 500;
+constexpr uint32_t kMarkStaleMs = 1000;  // a late "!" could land on the wrong moment
 
 std::string hex16(uint16_t v) {
     char b[8];
@@ -18,15 +21,14 @@ std::string hex16(uint16_t v) {
 
 }  // namespace
 
-Session::Session(const Config& cfg) : controller_(cfg) {}
+Session::Session(const Config& cfg) : controller_(cfg), mark_(cfg.mark) {}
 
 void Session::onClientSent(SocketId s, const uint8_t* data, size_t n, uint32_t nowMs) {
-    (void)nowMs;
     if (n == 0) return;
     Conn& c = conns_[s];
     if (c.kind == Conn::Kind::Other) return;
     if (c.kind == Conn::Kind::Map) {
-        feedUp(c, data, n);
+        feedUp(c, data, n, nowMs);
         return;
     }
     c.head.insert(c.head.end(), data, data + n);
@@ -44,12 +46,13 @@ void Session::onClientSent(SocketId s, const uint8_t* data, size_t n, uint32_t n
     downOk_ = true;
     injectOk_ = true;
     queue_.clear();
+    toClient_.clear();
     Bytes first;
     first.swap(c.head);
-    feedUp(c, first.data(), first.size());
+    feedUp(c, first.data(), first.size(), nowMs);
 }
 
-void Session::feedUp(Conn& c, const uint8_t* data, size_t n) {
+void Session::feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs) {
     std::vector<Bytes> packets;
     if (!c.up->feed(data, n, packets) && injectOk_) {
         injectOk_ = false;
@@ -61,6 +64,8 @@ void Session::feedUp(Conn& c, const uint8_t* data, size_t n) {
             log_.push_back("map server connection, account " + std::to_string(*account));
         } else if (auto change = parseHotkeyChange(p)) {
             world_.setHotkey(change->index, change->key);
+        } else if (auto dest = parseWalkRequest(p)) {
+            controller_.onClientWalk(*dest, world_, nowMs);
         }
     }
 }
@@ -93,6 +98,7 @@ void Session::onClosed(SocketId s) {
     downOk_ = false;
     injectOk_ = false;
     queue_.clear();
+    toClient_.clear();
     log_.push_back("map server connection closed");
 }
 
@@ -110,11 +116,16 @@ void Session::onUnobserved(SocketId s, Direction dir) {
 
 TickOutput Session::tick(const PadState& pad, const ViewInfo& view, uint32_t nowMs) {
     TickOutput out = controller_.tick(pad, world_, view, nowMs);
-    if (out.packets.empty()) return out;
+    std::vector<Bytes> requests = out.packets;
+    if (out.mark != 0 && mark_ && mapSocket_ != 0 && downOk_) {
+        toClient_.emplace_back(nowMs, buildEmotion(out.mark, kEmotionGasp));
+        requests.push_back(buildNameRequest(out.mark));  // the server answers at once and the "!" rides along
+    }
+    if (requests.empty()) return out;
     if (mapSocket_ != 0 && downOk_ && injectOk_) {
-        for (const Bytes& p : out.packets) queue_.emplace_back(nowMs, p);
+        for (Bytes& p : requests) queue_.emplace_back(nowMs, std::move(p));
     } else {
-        log_.push_back("dropped " + std::to_string(out.packets.size()) + " request(s): no healthy map server connection");
+        log_.push_back("dropped " + std::to_string(requests.size()) + " request(s): no healthy map server connection");
     }
     return out;
 }
@@ -137,6 +148,21 @@ std::vector<Bytes> Session::takeInjectable(uint32_t nowMs) {
         queue_.pop_front();
     }
     return ready;
+}
+
+size_t Session::appendForClient(SocketId s, uint8_t* buf, size_t n, size_t cap, uint32_t nowMs) {
+    while (!toClient_.empty() && nowMs - toClient_.front().first > kMarkStaleMs) toClient_.pop_front();
+    if (toClient_.empty() || s == 0 || s != mapSocket_ || !downOk_ || n > cap) return 0;
+    auto it = conns_.find(s);
+    if (it == conns_.end() || !it->second.down || !it->second.down->atBoundary()) return 0;
+    size_t added = 0;
+    while (!toClient_.empty() && toClient_.front().second.size() <= cap - n - added) {
+        const Bytes& p = toClient_.front().second;
+        std::copy(p.begin(), p.end(), buf + n + added);
+        added += p.size();
+        toClient_.pop_front();
+    }
+    return added;
 }
 
 void Session::markInjectBroken() {

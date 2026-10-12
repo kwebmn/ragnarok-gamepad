@@ -35,9 +35,14 @@ public:
     std::vector<Bytes> takeInjectable(uint32_t nowMs);
     bool canInject() const;
     void markInjectBroken();
+    // Appends the queued client-only packets (the "!" over a new target) to the `n` bytes the client is
+    // about to receive on `s` in a buffer of `cap` bytes: only on the map socket, only while the server
+    // stream is understood and stands at a packet boundary, only whole packets. Returns the bytes added.
+    size_t appendForClient(SocketId s, uint8_t* buf, size_t n, size_t cap, uint32_t nowMs);
 
     SocketId mapSocket() const { return mapSocket_; }
     const WorldState& world() const { return world_; }
+    const Controller& controller() const { return controller_; }
     std::vector<std::string> takeLog();
 
 private:
@@ -49,15 +54,17 @@ private:
         std::unique_ptr<StreamFramer> down;  // server -> client
     };
 
-    void feedUp(Conn& c, const uint8_t* data, size_t n);
+    void feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs);
 
     WorldState world_;
     Controller controller_;
+    bool mark_ = true;  // [aim] mark
     std::unordered_map<SocketId, Conn> conns_;
     SocketId mapSocket_ = 0;
     bool downOk_ = false;
     bool injectOk_ = false;
     std::deque<std::pair<uint32_t, Bytes>> queue_;
+    std::deque<std::pair<uint32_t, Bytes>> toClient_;  // packets made up for the client, with the time queued
     std::vector<std::string> log_;
 };
 

@@ -76,8 +76,9 @@ void XInputPad::rumble(Rumble pattern, DWORD nowMs) {
     pattern_.clear();
     switch (pattern) {
         case Rumble::TargetSwitch: pattern_ = {{80, 0, 0x6000}}; break;
-        case Rumble::AutoOn: pattern_ = {{60, 0x5000, 0x5000}, {60, 0, 0}, {60, 0x5000, 0x5000}}; break;
-        case Rumble::AutoOff: pattern_ = {{250, 0x8000, 0}}; break;
+        case Rumble::TargetCleared: pattern_ = {{60, 0x3000, 0}}; break;
+        case Rumble::PadOn: pattern_ = {{60, 0x5000, 0x5000}, {60, 0, 0}, {60, 0x5000, 0x5000}}; break;
+        case Rumble::PadOff: pattern_ = {{250, 0x8000, 0}}; break;
         case Rumble::Denied: pattern_ = {{40, 0, 0x3000}}; break;
         case Rumble::None: break;
     }

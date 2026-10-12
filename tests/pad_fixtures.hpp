@@ -25,6 +25,14 @@ inline PadState padRT(uint16_t buttons) {
     return p;
 }
 
+// The right stick pushed to (rx, ry), +y up.
+inline PadState padR(float rx, float ry, uint16_t buttons = 0) {
+    PadState p = pad(buttons);
+    p.rx = rx;
+    p.ry = ry;
+    return p;
+}
+
 inline uint16_t pid(const Bytes& b) { return rd16(b.data(), 0); }
 
 }  // namespace fx

@@ -95,7 +95,7 @@ Config parseConfig(const std::string& text) {
             setIdList(val, c.traps);
         } else if (key == "skills.repeat_ms") {
             int ms = 0;
-            if (toInt(val, 0, 2000, ms)) c.repeatMs = ms == 0 ? 0 : std::max(ms, 100);
+            if (toInt(val, 0, 2000, ms)) c.repeatMs = ms == 0 ? 0 : std::max(ms, 150);
         } else if (key == "aim.mark") {
             setBool(val, c.mark);
         } else if (key == "rumble.enabled") {

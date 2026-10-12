@@ -18,6 +18,8 @@ enum PadButton : uint16_t {
     kPadRight = 1 << 11,
     kPadL3 = 1 << 12,
     kPadR3 = 1 << 13,
+    kPadLT = 1 << 14,  // the triggers as buttons: the controller sets these from lt / rt
+    kPadRT = 1 << 15,
 };
 
 struct PadState {
@@ -28,6 +30,6 @@ struct PadState {
     float lt = 0, rt = 0;  // 0..1
 };
 
-enum class Rumble { None, TargetSwitch, AutoOn, AutoOff, Denied };
+enum class Rumble { None, TargetSwitch, TargetCleared, PadOn, PadOff, Denied };
 
 }  // namespace uapad

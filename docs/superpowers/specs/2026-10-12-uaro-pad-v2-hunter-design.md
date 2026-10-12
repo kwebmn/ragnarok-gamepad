@@ -85,7 +85,7 @@ F1–F9 висят прямо на кнопках, цель выбирается
 
 - `logic/pad.hpp`: биты `kPadLT = 1 << 14`, `kPadRT = 1 << 15` (их выставляет контроллер по осям);
   `Rumble { None, TargetSwitch, TargetCleared, PadOn, PadOff, Denied }` — AutoOn/AutoOff переименованы в PadOn/PadOff.
-- `config`: `skills.repeat_ms` (0 или 100–2000, по умолчанию 250), `skills.traps` (список id), `aim.mark` (1).
+- `config`: `skills.repeat_ms` (0 или 150–2000, по умолчанию 250), `skills.traps` (список id), `aim.mark` (1).
 - `proto/c2s`: `buildNameRequest(id)` 0x008c, `buildStopAttack()` 0x0118.
 - `proto/s2c_build` (новый): `buildEmotion(actor, type)` 0x00c0.
 - `world`: `lastMove()` — вектор последнего шага персонажа (to − from из 0x0087), пока его не было — пусто.

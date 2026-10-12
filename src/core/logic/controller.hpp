@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -7,6 +8,7 @@
 
 #include "core/bytes.hpp"
 #include "core/config/config.hpp"
+#include "core/logic/camera.hpp"
 #include "core/logic/pad.hpp"
 #include "core/world/world.hpp"
 
@@ -28,22 +30,34 @@ struct VirtualMouse {
 struct TickOutput {
     VirtualMouse mouse;
     std::vector<Bytes> packets;  // requests for the map server, in order
+    uint32_t mark = 0;           // a newly chosen monster to flag with "!" for the player; 0: none
     Rumble rumble = Rumble::None;
     std::vector<std::string> notes;  // decisions worth a log line
 };
 
+// The 0.2 layout: the left stick walks, the right stick picks a monster, A attacks, X/Y/B/RB/RT/LB and
+// D-pad up/right/down fire hotkey slots F1-F9, LT picks up, D-pad left sits, R3 drops the target.
 class Controller {
 public:
     explicit Controller(const Config& cfg);
     TickOutput tick(const PadState& pad, const WorldState& world, const ViewInfo& view, uint32_t nowMs);
+    // The client asked to walk to `dest` (0x00a7). While the pad holds the walking point steady this
+    // shows which way the camera is turned.
+    void onClientWalk(Cell dest, const WorldState& world, uint32_t nowMs);
 
     bool enabled() const { return enabled_; }
-    bool autoAttack() const { return autoAttack_; }
     uint32_t target() const { return target_; }
+    bool attacking() const { return wantAttack_; }
     bool approaching() const { return approach_.has_value(); }
+    const CameraYaw& camera() const { return camera_; }
 
 private:
-    enum class Mod { None, LT, RT, LB, RB };
+    enum class Action { Attack, Slot, Pickup, SitStand, ClearTarget };
+    struct Binding {
+        uint16_t button;
+        Action action;
+        int slot;  // Action::Slot: hotkey index
+    };
     struct Approach {
         bool pickup = false;  // floor item pickup, otherwise a skill
         uint32_t id = 0;      // floor item id or actor id
@@ -51,35 +65,53 @@ private:
         uint16_t skill = 0;
         uint16_t lv = 0;
         int range = 1;
+        int slot = -1;  // the hotkey slot that asked for the skill
         uint32_t startMs = 0;
         std::optional<uint32_t> lastStepMs;
     };
 
-    void updateModifier(bool lt, bool rt, uint16_t buttons);
+    static const Binding kLayout[];
+
+    uint16_t readButtons(const PadState& pad);
     void walk(const PadState& pad, const WorldState& world, const ViewInfo& view, uint32_t now, TickOutput& out);
-    void handleButtons(uint16_t down, const WorldState& world, uint32_t now, TickOutput& out);
-    void useSlot(int slot, const WorldState& world, uint32_t now, TickOutput& out);
-    void pickup(const WorldState& world, uint32_t now, TickOutput& out);
+    void aim(const PadState& pad, const WorldState& world, uint32_t now, TickOutput& out);
+    void handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now, TickOutput& out);
+    void fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    void attack(const WorldState& world, uint32_t now, TickOutput& out);
+    void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    void clearTarget(TickOutput& out);
     void stepApproach(const WorldState& world, uint32_t now, TickOutput& out);
-    void maintainTarget(const WorldState& world, uint32_t now, TickOutput& out);
-    void setTarget(uint32_t id, TickOutput& out);
+    void maintainTarget(bool attackHeld, const WorldState& world, uint32_t now, TickOutput& out);
+    uint32_t nearestTarget(const WorldState& world, uint32_t now) const;
+    void setTarget(uint32_t id, uint32_t now, TickOutput& out);
     bool targetAlive(const WorldState& world) const;
     void deny(TickOutput& out, const std::string& why);
 
     Config cfg_;
     bool enabled_ = true;
-    bool autoAttack_ = false;
     uint16_t prevButtons_ = 0;
-    Mod mod_ = Mod::None;
+    uint16_t armed_ = 0;  // held buttons whose press we saw while active: only these repeat
+    bool ltHeld_ = false;
+    bool rtHeld_ = false;
+    std::array<uint32_t, 16> repeatAtMs_{};  // by button bit: when a held button fires again
     bool walking_ = false;
+    int ringX_ = 0;  // the walking point's offset from the centre, px
+    int ringY_ = 0;
+    double ringAngle_ = 0;
+    std::optional<uint32_t> ringSteadyFromMs_;  // walk requests from then on tell the camera's turn
+    bool aiming_ = false;
+    bool aimLatched_ = false;  // R3 dropped the target: no aiming until the stick comes back
     uint32_t target_ = 0;
     bool wantAttack_ = false;  // we want the server to be attacking target_
     bool attackSent_ = false;  // an attack request for target_ is in effect
     uint32_t attackSinceMs_ = 0;
     std::optional<uint32_t> lastAttackMs_;
-    std::optional<uint32_t> lastSlotMs_;
+    std::array<std::optional<uint32_t>, kHotkeySlots> lastSlotMs_{};
     std::unordered_map<uint32_t, uint32_t> blacklist_;  // actor id -> blacklisted until (ms)
+    std::unordered_map<uint32_t, uint32_t> markedMs_;   // actor id -> when we last showed its "!"
     std::optional<Approach> approach_;
+    CameraYaw camera_;
 };
 
 }  // namespace uapad

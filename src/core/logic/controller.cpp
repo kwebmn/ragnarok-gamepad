@@ -10,21 +10,48 @@
 namespace uapad {
 namespace {
 
-constexpr float kTriggerHeld = 0.5f;
+constexpr double kPi = 3.14159265358979323846;
+constexpr float kTriggerOn = 0.5f;
+constexpr float kTriggerOff = 0.3f;
+constexpr double kAimOn = 0.6;
+constexpr double kAimOff = 0.35;
+constexpr double kAimSwitchMargin = 8.0;  // aim score points a new monster must win by
 constexpr uint32_t kSlotIntervalMs = 150;
 constexpr uint32_t kApproachStepMs = 250;
 constexpr uint32_t kApproachTimeoutMs = 5000;
+constexpr uint32_t kRingSettleMs = 150;
+constexpr double kRingTurn = 10.0 * kPi / 180.0;
+constexpr uint32_t kMarkAgainMs = 1000;
 constexpr int kPickupRadius = 10;
 constexpr int kPickupReach = 1;
-constexpr uint16_t kFaceButtons[4] = {kPadA, kPadB, kPadX, kPadY};
-constexpr uint16_t kActionButtons = kPadA | kPadB | kPadX | kPadY | kPadLeft | kPadRight;
-constexpr int kSlotBase[] = {0, 0, 4, 9, 13};  // by Mod: None, LT, RT, LB, RB
 
 bool due(const std::optional<uint32_t>& last, uint32_t now, uint32_t interval) {
     return !last || now - *last >= interval;
 }
 
+size_t bitIndex(uint16_t button) {
+    size_t i = 0;
+    while (i < 15 && !(button & (1u << i))) ++i;
+    return i;
+}
+
 }  // namespace
+
+const Controller::Binding Controller::kLayout[] = {
+    {kPadA, Action::Attack, 0},
+    {kPadX, Action::Slot, 0},     // F1
+    {kPadY, Action::Slot, 1},     // F2
+    {kPadB, Action::Slot, 2},     // F3
+    {kPadRB, Action::Slot, 3},    // F4
+    {kPadRT, Action::Slot, 4},    // F5
+    {kPadLB, Action::Slot, 5},    // F6
+    {kPadUp, Action::Slot, 6},    // F7
+    {kPadRight, Action::Slot, 7}, // F8
+    {kPadDown, Action::Slot, 8},  // F9
+    {kPadLT, Action::Pickup, 0},
+    {kPadLeft, Action::SitStand, 0},
+    {kPadR3, Action::ClearTarget, 0},
+};
 
 Controller::Controller(const Config& cfg) : cfg_(cfg), enabled_(cfg.enabled) {}
 
@@ -37,62 +64,75 @@ bool Controller::targetAlive(const WorldState& world) const {
     return target_ != 0 && world.actors().count(target_) != 0;
 }
 
-void Controller::setTarget(uint32_t id, TickOutput& out) {
+uint32_t Controller::nearestTarget(const WorldState& world, uint32_t now) const {
+    auto c = targetCandidates(world, now, blacklist_);
+    return c.empty() ? 0 : c.front();
+}
+
+void Controller::setTarget(uint32_t id, uint32_t now, TickOutput& out) {
     if (id == target_) return;
     target_ = id;
     attackSent_ = false;
     if (id == 0) return;
     if (out.rumble == Rumble::None) out.rumble = Rumble::TargetSwitch;
     out.notes.push_back("target " + std::to_string(id));
+    for (auto it = markedMs_.begin(); it != markedMs_.end();) {
+        if (now - it->second >= kMarkAgainMs)
+            it = markedMs_.erase(it);
+        else
+            ++it;
+    }
+    if (markedMs_.count(id) == 0) {  // its "!" from a moment ago would still be showing
+        markedMs_[id] = now;
+        out.mark = id;
+    }
 }
 
-void Controller::updateModifier(bool lt, bool rt, uint16_t buttons) {
-    auto held = [&](Mod m) {
-        switch (m) {
-            case Mod::LT: return lt;
-            case Mod::RT: return rt;
-            case Mod::LB: return (buttons & kPadLB) != 0;
-            case Mod::RB: return (buttons & kPadRB) != 0;
-            case Mod::None: break;
-        }
-        return false;
-    };
-    if (mod_ != Mod::None && held(mod_)) return;  // the first pressed modifier keeps priority
-    mod_ = Mod::None;
-    for (Mod m : {Mod::LT, Mod::RT, Mod::LB, Mod::RB}) {
-        if (held(m)) {
-            mod_ = m;
-            break;
-        }
+uint16_t Controller::readButtons(const PadState& pad) {
+    if (!pad.connected) {
+        ltHeld_ = rtHeld_ = false;
+        return 0;
     }
+    ltHeld_ = pad.lt > (ltHeld_ ? kTriggerOff : kTriggerOn);
+    rtHeld_ = pad.rt > (rtHeld_ ? kTriggerOff : kTriggerOn);
+    uint16_t b = uint16_t(pad.buttons & ~(kPadLT | kPadRT));
+    if (ltHeld_) b = uint16_t(b | kPadLT);
+    if (rtHeld_) b = uint16_t(b | kPadRT);
+    return b;
 }
 
 TickOutput Controller::tick(const PadState& pad, const WorldState& world, const ViewInfo& view, uint32_t now) {
     TickOutput out;
-    const uint16_t buttons = pad.connected ? pad.buttons : 0;
+    const uint16_t buttons = readButtons(pad);
     const uint16_t down = uint16_t(buttons & ~prevButtons_);
     prevButtons_ = buttons;
-    updateModifier(pad.connected && pad.lt > kTriggerHeld, pad.connected && pad.rt > kTriggerHeld, buttons);
 
     if (down & kPadBack) {
         enabled_ = !enabled_;
-        out.rumble = enabled_ ? Rumble::AutoOn : Rumble::AutoOff;
+        out.rumble = enabled_ ? Rumble::PadOn : Rumble::PadOff;
         out.notes.push_back(enabled_ ? "pad on" : "pad off");
-        if (!enabled_) {
-            autoAttack_ = false;
-            wantAttack_ = false;
-        }
+        if (!enabled_) wantAttack_ = false;
     }
     if (!enabled_ || !pad.connected || !view.focused || !world.inGame() || world.dead()) {
         walking_ = false;
+        ringSteadyFromMs_.reset();
+        aiming_ = false;
+        armed_ = 0;  // buttons pressed meanwhile do nothing until pressed again
         approach_.reset();
         return out;
     }
     walk(pad, world, view, now, out);
-    handleButtons(down, world, now, out);
+    aim(pad, world, now, out);
+    handleButtons(buttons, down, world, now, out);
     stepApproach(world, now, out);
-    maintainTarget(world, now, out);
+    maintainTarget((armed_ & kPadA) != 0, world, now, out);
     return out;
+}
+
+void Controller::onClientWalk(Cell dest, const WorldState& world, uint32_t now) {
+    if (!walking_ || !ringSteadyFromMs_ || int32_t(now - *ringSteadyFromMs_) < 0) return;
+    const Cell me = world.selfPos(now);
+    camera_.addSample(ringX_, ringY_, dest.x - me.x, dest.y - me.y);
 }
 
 void Controller::walk(const PadState& pad, const WorldState& world, const ViewInfo& view, uint32_t now,
@@ -104,7 +144,8 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
             walking_ = true;
             approach_.reset();
             attackSent_ = false;
-            if (!autoAttack_) wantAttack_ = false;
+            wantAttack_ = false;  // walking ends a fight; a held A starts it again afterwards
+            ringSteadyFromMs_.reset();
         }
         const float radius = cfg_.walkRadius * float(std::min(view.width, view.height));
         const int cx = view.width / 2;
@@ -114,84 +155,133 @@ void Controller::walk(const PadState& pad, const WorldState& world, const ViewIn
         if (starting && cfg_.press == PressMode::Center) {
             out.mouse.x = cx;
             out.mouse.y = cy;
-        } else {
-            out.mouse.x = cx + int(std::lround(pad.lx / mag * radius));
-            out.mouse.y = cy - int(std::lround(pad.ly / mag * radius));
+            return;
+        }
+        ringX_ = int(std::lround(pad.lx / mag * radius));
+        ringY_ = -int(std::lround(pad.ly / mag * radius));
+        out.mouse.x = cx + ringX_;
+        out.mouse.y = cy + ringY_;
+        // The client's walk requests show the camera's turn once it has acted on this point: right away
+        // for the first press, a moment later after the stick turned.
+        const double angle = std::atan2(double(pad.ly), double(pad.lx));
+        if (!ringSteadyFromMs_ || std::fabs(std::remainder(angle - ringAngle_, 2.0 * kPi)) > kRingTurn) {
+            ringSteadyFromMs_ = (starting ? now : now + kRingSettleMs);
+            ringAngle_ = angle;
         }
         return;
     }
     if (walking_) {
         walking_ = false;
+        ringSteadyFromMs_.reset();
         out.packets.push_back(buildWalk(world.selfPos(now)));  // stop where we are
         out.notes.push_back("walk stop");
     }
 }
 
-void Controller::handleButtons(uint16_t down, const WorldState& world, uint32_t now, TickOutput& out) {
-    if (down & kActionButtons) approach_.reset();
-    if (mod_ != Mod::None) {
-        for (int i = 0; i < 4; ++i)
-            if (down & kFaceButtons[i]) useSlot(kSlotBase[int(mod_)] + i, world, now, out);
-    } else {
-        if (down & kPadA) {
-            if (!targetAlive(world)) {
-                auto c = targetCandidates(world, now, blacklist_);
-                if (c.empty())
-                    deny(out, "no monsters around");
-                else
-                    setTarget(c.front(), out);
-            }
-            if (targetAlive(world)) {
-                wantAttack_ = true;
-                attackSent_ = false;
-            }
-        }
-        if (down & kPadB) pickup(world, now, out);
-        if (down & kPadX) {
-            autoAttack_ = !autoAttack_;
-            wantAttack_ = autoAttack_;
-            out.rumble = autoAttack_ ? Rumble::AutoOn : Rumble::AutoOff;
-            out.notes.push_back(autoAttack_ ? "auto-attack on" : "auto-attack off");
-        }
-        if (down & kPadY) {
-            out.packets.push_back(buildAction(0, world.sitting() ? kActionStand : kActionSit));
-            attackSent_ = false;
+void Controller::aim(const PadState& pad, const WorldState& world, uint32_t now, TickOutput& out) {
+    const double mag = std::hypot(double(pad.rx), double(pad.ry));
+    if (aimLatched_) {
+        if (mag < kAimOff) aimLatched_ = false;
+        return;
+    }
+    if (mag < (aiming_ ? kAimOff : kAimOn)) {
+        aiming_ = false;
+        return;
+    }
+    aiming_ = true;
+    double dirX = 0;
+    double dirY = 0;
+    camera_.toWorld(pad.rx, -pad.ry, dirX, dirY);  // the stick's +y is up, the screen's is down
+    const uint32_t best = pickInDirection(world, now, dirX, dirY, blacklist_);
+    if (best == 0 || best == target_) return;
+    if (targetAlive(world)) {
+        const auto current = aimScore(world, now, target_, dirX, dirY);
+        const auto challenger = aimScore(world, now, best, dirX, dirY);
+        if (current && challenger && *challenger + kAimSwitchMargin > *current) return;
+    }
+    setTarget(best, now, out);  // a running attack follows: setTarget asks for a new attack request
+}
+
+void Controller::handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now,
+                               TickOutput& out) {
+    armed_ = uint16_t((armed_ & held) | down);
+    for (const Binding& b : kLayout) {
+        if (down & b.button) {
+            approach_.reset();  // a new press overrides walking up to something
+            break;
         }
     }
-    if (down & (kPadLeft | kPadRight)) {
-        const uint32_t next = cycleTarget(targetCandidates(world, now, blacklist_), target_, (down & kPadRight) ? 1 : -1);
-        if (next == 0) {
-            deny(out, "no monsters around");
-        } else {
-            setTarget(next, out);
-            wantAttack_ = true;
-            attackSent_ = false;
+    for (const Binding& b : kLayout) {
+        const size_t bit = bitIndex(b.button);
+        if (down & b.button) {
+            fire(b, false, world, now, out);
+            repeatAtMs_[bit] = now + uint32_t(cfg_.repeatMs);
+            continue;
+        }
+        const bool repeats = b.action == Action::Slot || b.action == Action::Pickup;
+        if (repeats && cfg_.repeatMs > 0 && (armed_ & b.button) && !approach_ &&
+            int32_t(now - repeatAtMs_[bit]) >= 0) {
+            fire(b, true, world, now, out);
+            repeatAtMs_[bit] = now + uint32_t(cfg_.repeatMs);
         }
     }
 }
 
-void Controller::useSlot(int slot, const WorldState& world, uint32_t now, TickOutput& out) {
+void Controller::fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
+    switch (b.action) {
+        case Action::Attack:
+            attack(world, now, out);
+            break;
+        case Action::Slot:
+            useSlot(b.slot, repeat, world, now, out);
+            break;
+        case Action::Pickup:
+            pickup(repeat, world, now, out);
+            break;
+        case Action::SitStand:
+            out.packets.push_back(buildAction(0, world.sitting() ? kActionStand : kActionSit));
+            attackSent_ = false;
+            wantAttack_ = false;
+            break;
+        case Action::ClearTarget:
+            clearTarget(out);
+            break;
+    }
+}
+
+void Controller::attack(const WorldState& world, uint32_t now, TickOutput& out) {
+    if (!targetAlive(world)) {
+        const uint32_t id = nearestTarget(world, now);
+        if (id == 0) {
+            deny(out, "no monsters around");
+            return;
+        }
+        setTarget(id, now, out);
+    }
+    wantAttack_ = true;
+    attackSent_ = false;
+}
+
+void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
     const Hotkey& key = world.hotkey(slot);
     if (key.id == 0) {
-        deny(out, "slot " + std::to_string(slot) + " is empty" +
-                      (world.hotkeysKnown() ? std::string()
-                                            : std::string(" (the server sent no hotkey bar: drag the skill onto the bar "
-                                                          "again so the pad can see it)")));
+        if (!repeat)
+            deny(out, "slot F" + std::to_string(slot + 1) + " is empty" +
+                          (world.hotkeysKnown() ? std::string()
+                                                : std::string(" (the server sent no hotkey bar: drag the skill onto "
+                                                              "the bar again so the pad can see it)")));
         return;
     }
-    if (!due(lastSlotMs_, now, kSlotIntervalMs)) return;
-    lastSlotMs_ = now;
+    std::optional<uint32_t>& last = lastSlotMs_[size_t(slot)];
+    if (!due(last, now, kSlotIntervalMs)) return;
+    last = now;
     const uint32_t target = targetAlive(world) ? target_ : 0;
-    uint32_t nearest = 0;
-    if (target == 0) {
-        auto c = targetCandidates(world, now, blacklist_);
-        if (!c.empty()) nearest = c.front();
-    }
+    const uint32_t nearest = target != 0 ? 0 : nearestTarget(world, now);
     SlotDecision d = decideSlot(key, world, target, nearest, cfg_, now);
-    if (d.newTarget != 0) setTarget(d.newTarget, out);
+    if (d.newTarget != 0) setTarget(d.newTarget, now, out);
     switch (d.kind) {
         case SlotDecision::Kind::Deny:
-            deny(out, d.reason);
+            if (!repeat) deny(out, d.reason);
             break;
         case SlotDecision::Kind::Send:
             out.packets.push_back(std::move(d.packet));
@@ -203,6 +293,7 @@ void Controller::useSlot(int slot, const WorldState& world, uint32_t now, TickOu
             ap.skill = d.skill;
             ap.lv = d.lv;
             ap.range = d.range;
+            ap.slot = slot;
             ap.startMs = now;
             approach_ = ap;
             out.notes.push_back("approaching for skill " + std::to_string(d.skill));
@@ -211,7 +302,7 @@ void Controller::useSlot(int slot, const WorldState& world, uint32_t now, TickOu
     }
 }
 
-void Controller::pickup(const WorldState& world, uint32_t now, TickOutput& out) {
+void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
     const Cell me = world.selfPos(now);
     const GroundItem* best = nullptr;
     int bestDist = 0;
@@ -225,7 +316,7 @@ void Controller::pickup(const WorldState& world, uint32_t now, TickOutput& out) 
         }
     }
     if (!best) {
-        deny(out, "nothing to pick up");
+        if (!repeat) deny(out, "nothing to pick up");
         return;
     }
     if (bestDist <= kPickupReach) {
@@ -239,6 +330,19 @@ void Controller::pickup(const WorldState& world, uint32_t now, TickOutput& out) 
     ap.startMs = now;
     approach_ = ap;
     out.notes.push_back("walking to item " + std::to_string(best->id));
+}
+
+void Controller::clearTarget(TickOutput& out) {
+    aiming_ = false;
+    aimLatched_ = true;  // clicking the stick may push it too: no new pick until it comes back
+    if (target_ == 0 && !wantAttack_) return;
+    out.packets.push_back(buildStopAttack());
+    target_ = 0;
+    wantAttack_ = false;
+    attackSent_ = false;
+    approach_.reset();
+    out.rumble = Rumble::TargetCleared;
+    out.notes.push_back("target cleared");
 }
 
 void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput& out) {
@@ -268,6 +372,7 @@ void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput&
             out.packets.push_back(buildSkillToPos(ap.skill, ap.lv, *goal));
         else
             out.packets.push_back(buildSkillToId(ap.skill, ap.lv, ap.id));
+        if (ap.slot >= 0) lastSlotMs_[size_t(ap.slot)] = now;  // a held button waits its turn again
         approach_.reset();
         return;
     }
@@ -277,7 +382,7 @@ void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput&
     }
 }
 
-void Controller::maintainTarget(const WorldState& world, uint32_t now, TickOutput& out) {
+void Controller::maintainTarget(bool attackHeld, const WorldState& world, uint32_t now, TickOutput& out) {
     for (auto it = blacklist_.begin(); it != blacklist_.end();) {
         if (int32_t(now - it->second) >= 0)
             it = blacklist_.erase(it);
@@ -288,7 +393,6 @@ void Controller::maintainTarget(const WorldState& world, uint32_t now, TickOutpu
         out.notes.push_back("target " + std::to_string(target_) + " is gone");
         target_ = 0;
         attackSent_ = false;
-        if (!autoAttack_) wantAttack_ = false;
     }
     if (target_ != 0 && attackSent_ &&
         shouldGiveUp(world, target_, attackSinceMs_, now, uint32_t(cfg_.giveUpSeconds * 1000.0f))) {
@@ -296,15 +400,15 @@ void Controller::maintainTarget(const WorldState& world, uint32_t now, TickOutpu
         out.notes.push_back("giving up on " + std::to_string(target_));
         target_ = 0;
         attackSent_ = false;
-        if (!autoAttack_) wantAttack_ = false;
     }
+    // A press fights the target until it is gone; holding A goes on to the next one.
+    if (attackHeld)
+        wantAttack_ = true;
+    else if (target_ == 0)
+        wantAttack_ = false;
     const bool idle = !walking_ && !approach_ && !world.sitting();
-    if (autoAttack_ && target_ == 0 && idle) {
-        auto c = targetCandidates(world, now, blacklist_);
-        if (!c.empty()) {
-            setTarget(c.front(), out);
-            wantAttack_ = true;
-        }
+    if (wantAttack_ && target_ == 0 && idle) {
+        if (const uint32_t id = nearestTarget(world, now)) setTarget(id, now, out);
     }
     if (target_ != 0 && wantAttack_ && !attackSent_ && idle &&
         due(lastAttackMs_, now, uint32_t(cfg_.attackIntervalMs))) {

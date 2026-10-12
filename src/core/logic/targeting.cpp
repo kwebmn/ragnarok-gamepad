@@ -69,16 +69,6 @@ uint32_t pickInDirection(const WorldState& world, uint32_t nowMs, double dirX, d
     return best;
 }
 
-uint32_t cycleTarget(const std::vector<uint32_t>& candidates, uint32_t current, int dir) {
-    if (candidates.empty()) return 0;
-    auto it = std::find(candidates.begin(), candidates.end(), current);
-    if (it == candidates.end()) return candidates.front();
-    const long n = long(candidates.size());
-    long i = long(it - candidates.begin()) + (dir > 0 ? 1 : -1);
-    i = ((i % n) + n) % n;
-    return candidates[size_t(i)];
-}
-
 bool shouldGiveUp(const WorldState& world, uint32_t target, uint32_t attackSinceMs, uint32_t nowMs, uint32_t giveUpMs) {
     uint32_t ref = attackSinceMs;
     if (auto hit = world.lastHitMs(target); hit && int32_t(*hit - ref) > 0) ref = *hit;

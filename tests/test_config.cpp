@@ -74,7 +74,7 @@ TEST(config_v2_keys) {
     CHECK(c.traps == (std::vector<uint16_t>{117, 123}));
     CHECK(!c.mark);
     CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 0\n").repeatMs, 0);    // no repeat
-    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 30\n").repeatMs, 100);  // faster than 100 ms is clamped
+    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 30\n").repeatMs, 150);  // a slot fires at most every 150 ms anyway
     CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 9000\n").repeatMs, 250);
     CHECK_EQ(parseConfig("[skills]\nrepeat_ms = -5\n").repeatMs, 250);
 }

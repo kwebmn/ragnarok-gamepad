@@ -42,17 +42,6 @@ TEST(targeting_uses_interpolated_positions) {
     CHECK(targetCandidates(w, 800, {}).front() == 110000001u);  // 8 cells walked: now at (102, 100)
 }
 
-TEST(targeting_cycle_wraps) {
-    const std::vector<uint32_t> c{10, 20, 30};
-    CHECK_EQ(cycleTarget(c, 0, +1), 10u);
-    CHECK_EQ(cycleTarget(c, 0, -1), 10u);
-    CHECK_EQ(cycleTarget(c, 10, +1), 20u);
-    CHECK_EQ(cycleTarget(c, 30, +1), 10u);
-    CHECK_EQ(cycleTarget(c, 10, -1), 30u);
-    CHECK_EQ(cycleTarget({}, 10, +1), 0u);
-    CHECK_EQ(cycleTarget({10}, 10, +1), 10u);
-}
-
 TEST(targeting_give_up_after_silence) {
     WorldState w = fx::world();
     fx::addMob(w, 110000001, Cell{102, 100});

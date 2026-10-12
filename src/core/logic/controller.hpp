@@ -83,6 +83,7 @@ private:
     void aim(const PadState& pad, const WorldState& world, uint32_t now, TickOutput& out);
     void handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now, TickOutput& out);
     void fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
+    bool ownsApproach(const Binding& b) const;
     void attack(const WorldState& world, uint32_t now, TickOutput& out);
     void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);

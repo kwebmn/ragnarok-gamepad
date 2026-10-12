@@ -242,12 +242,19 @@ void Controller::handleButtons(uint16_t held, uint16_t down, const WorldState& w
             continue;
         }
         const bool repeats = b.action == Action::Slot || b.action == Action::Pickup;
-        if (repeats && cfg_.repeatMs > 0 && (armed_ & b.button) && !approach_ &&
+        if (repeats && cfg_.repeatMs > 0 && (armed_ & b.button) && !ownsApproach(b) &&
             int32_t(now - repeatAtMs_[bit]) >= 0) {
             fire(b, true, world, now, out);
             repeatAtMs_[bit] = now + uint32_t(cfg_.repeatMs);
         }
     }
+}
+
+// The button whose press is walking us up to something waits for that walk; the others keep repeating.
+bool Controller::ownsApproach(const Binding& b) const {
+    if (!approach_) return false;
+    if (b.action == Action::Slot) return !approach_->pickup && approach_->slot == b.slot;
+    return b.action == Action::Pickup && approach_->pickup;
 }
 
 void Controller::fire(const Binding& b, bool repeat, const WorldState& world, uint32_t now, TickOutput& out) {
@@ -305,6 +312,7 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
         if (!repeat) deny(out, "skill " + std::to_string(d.skill) + ": out of range while walking");
         return;
     }
+    if (d.kind == SlotDecision::Kind::Approach && repeat && approach_) return;  // a press started that walk
     if (d.newTarget != 0) setTarget(d.newTarget, now, out);
     switch (d.kind) {
         case SlotDecision::Kind::Deny:
@@ -371,6 +379,7 @@ void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, Tick
         if (!repeat) deny(out, "item " + std::to_string(best->id) + " is out of reach while walking");
         return;
     }
+    if (repeat && approach_) return;  // a press started that walk
     Approach ap;
     ap.pickup = true;
     ap.id = best->id;

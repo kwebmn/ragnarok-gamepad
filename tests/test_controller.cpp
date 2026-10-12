@@ -508,6 +508,33 @@ TEST(ctl_no_pickup_walk_while_the_stick_walks) {
     CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
 }
 
+TEST(ctl_held_potion_repeats_during_a_walk_up) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{105, 100});
+    TickOutput o = c.tick(padRT(kPadX), w, view(), 1000);  // F1 Bash walks up; F5 Red Potion
+    CHECK(c.approaching());
+    CHECK_EQ(o.packets.size(), 2u);
+    o = c.tick(padRT(kPadX), w, view(), 1250);  // both held: the potion repeats, the Bash waits for its walk
+    CHECK(c.approaching());
+    bool potion = false;
+    for (const Bytes& b : o.packets) potion = potion || pid(b) == 0x009f;
+    CHECK(potion);
+}
+
+TEST(ctl_held_repeat_never_takes_over_another_walk_up) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{112, 100});          // 12 cells: Bash and Thunderstorm both need a walk up
+    c.tick(pad(kPadX), w, view(), 1000);           // F1: Bash walks up
+    c.tick(pad(kPadX | kPadRB), w, view(), 1100);  // F4 pressed too: a new press takes over
+    TickOutput o = c.tick(pad(kPadX | kPadRB), w, view(), 1250);  // F1's repeat must not take it back
+    CHECK(c.approaching());
+    bool bash = false;
+    for (const std::string& n : o.notes) bash = bash || n.find("skill 5") != std::string::npos;
+    CHECK(!bash);
+}
+
 TEST(ctl_slot_throttle_is_per_slot) {
     Controller c(Config{});
     WorldState w = slotWorld();

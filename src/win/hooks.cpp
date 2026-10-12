@@ -27,8 +27,11 @@ peekmessage_t o_peekmessage = nullptr;
 wsagetlasterror_t o_wsagetlasterror = nullptr;
 
 int WSAAPI h_recv(SOCKET s, char* buf, int len, int flags) {
-    const int n = o_recv(s, buf, len, flags);
-    if (n > 0 && !(flags & MSG_PEEK)) runtime::onRecv(s, buf, n);
+    int n = o_recv(s, buf, len, flags);
+    if (n > 0 && !(flags & MSG_PEEK)) {
+        runtime::onRecv(s, buf, n);
+        n += runtime::extendRecv(s, buf, n, len);
+    }
     return n;
 }
 

@@ -42,6 +42,7 @@ struct State {
     DWORD lastPointerCheckMs = 0;
     bool checkedPointers = false;
     bool loggedBufferRead = false;
+    bool loggedMark = false;
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
     bool ticked = false;
@@ -368,6 +369,24 @@ void onRecv(SOCKET sock, const char* buf, int n) {
         }
         s.session->onServerData(uintptr_t(sock), reinterpret_cast<const uint8_t*>(buf), size_t(n), GetTickCount());
     });
+}
+
+int extendRecv(SOCKET sock, char* buf, int n, int cap) {
+    State& s = S();
+    int added = 0;
+    guarded("recv extend", [&] {
+        if (!buf || n <= 0 || cap <= n || !onGameThread()) return;
+        added = int(s.session->appendForClient(uintptr_t(sock), reinterpret_cast<uint8_t*>(buf), size_t(n),
+                                               size_t(cap), GetTickCount()));
+        if (added == 0) return;
+        if (!s.loggedMark) {
+            s.loggedMark = true;
+            LOG_INFO("target marks reach the client (%d bytes after %d received)", added, n);
+        } else {
+            LOG_DEBUG("target mark: %d bytes after %d received", added, n);
+        }
+    });
+    return added;
 }
 
 void onSent(SOCKET sock, const char* buf, int n) {

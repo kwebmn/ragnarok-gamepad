@@ -151,3 +151,19 @@ TEST(session_map_close_resets_connection) {
     CHECK_EQ(s.mapSocket(), Session::SocketId(0));
     CHECK(!s.canInject());
 }
+
+TEST(session_logs_hotkey_bar_arrival) {
+    Session s{Config{}};
+    connect(s);
+    s.takeLog();
+    Bytes hk(191, 0);
+    wr16(hk, 0, 0x02b9);
+    hk[2] = 1;  // slot 0: Bash lv 10
+    wr32(hk, 3, 5);
+    wr16(hk, 7, 10);
+    s.onServerData(kMap, hk.data(), hk.size(), 10);
+    bool found = false;
+    for (const std::string& line : s.takeLog())
+        if (line.find("hotkey bar") != std::string::npos && line.find("1 filled") != std::string::npos) found = true;
+    CHECK(found);
+}

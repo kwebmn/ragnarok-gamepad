@@ -173,7 +173,10 @@ void Controller::handleButtons(uint16_t down, const WorldState& world, uint32_t 
 void Controller::useSlot(int slot, const WorldState& world, uint32_t now, TickOutput& out) {
     const Hotkey& key = world.hotkey(slot);
     if (key.id == 0) {
-        deny(out, "slot " + std::to_string(slot) + " is empty");
+        deny(out, "slot " + std::to_string(slot) + " is empty" +
+                      (world.hotkeysKnown() ? std::string()
+                                            : std::string(" (the server sent no hotkey bar: drag the skill onto the bar "
+                                                          "again so the pad can see it)")));
         return;
     }
     if (!due(lastSlotMs_, now, kSlotIntervalMs)) return;

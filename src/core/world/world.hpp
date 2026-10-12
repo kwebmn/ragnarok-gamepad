@@ -48,6 +48,8 @@ public:
     std::optional<InvEntry> findUsable(uint16_t itemId) const;
     std::optional<SkillInfo> skill(uint16_t id) const;
     const Hotkey& hotkey(int slot) const;
+    // False until the server sends 0x02b9; uAthena only does with HOTKEY_SAVING enabled.
+    bool hotkeysKnown() const { return hotkeysKnown_; }
 
 private:
     static Cell interpolate(Cell from, Cell to, uint16_t speed, uint32_t startMs, uint32_t nowMs);
@@ -68,6 +70,7 @@ private:
     std::unordered_map<uint16_t, InvEntry> inventory_;  // by protocol index
     std::unordered_map<uint16_t, SkillInfo> skills_;
     std::array<Hotkey, kHotkeySlots> hotkeys_{};
+    bool hotkeysKnown_ = false;
 };
 
 }  // namespace uapad

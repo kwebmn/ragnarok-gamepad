@@ -391,3 +391,15 @@ TEST(ctl_auto_attack_waits_while_sitting) {
     CHECK_EQ(c.target(), 110000001u);
     CHECK_EQ(o.packets.size(), 1u);
 }
+
+TEST(ctl_empty_slot_hint_when_server_sent_no_bar) {
+    Controller c(Config{});
+    WorldState w = world();  // the server never sent 0x02b9 (HOTKEY_SAVING off)
+    TickOutput o = c.tick(padLT(kPadA), w, view(), 1000);
+    CHECK(o.rumble == Rumble::Denied);
+    CHECK(!o.notes.empty() && o.notes.back().find("hotkey bar") != std::string::npos);
+    Controller c2(Config{});
+    WorldState known = slotWorld();  // the bar arrived; slot 7 is just empty
+    o = c2.tick(padRT(kPadY), known, view(), 1000);
+    CHECK(!o.notes.empty() && o.notes.back().find("hotkey bar") == std::string::npos);
+}

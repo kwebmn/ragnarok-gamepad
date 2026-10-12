@@ -171,6 +171,7 @@ void WorldState::apply(const Event& ev, uint32_t nowMs) {
                 s.range = e.range;
             } else if constexpr (std::is_same_v<T, EvHotkeys>) {
                 hotkeys_ = e.keys;
+                hotkeysKnown_ = true;
             } else if constexpr (std::is_same_v<T, EvSelfSpeed>) {
                 selfFrom_ = selfPos(nowMs);  // re-anchor the current walk at the old speed
                 selfMoveStartMs_ = nowMs;

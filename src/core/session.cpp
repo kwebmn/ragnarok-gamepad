@@ -74,8 +74,16 @@ void Session::onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t n
         downOk_ = false;
         log_.push_back("server stream out of sync at " + hex16(it->second.down->badId()) + "; pad requests are off");
     }
-    for (const Bytes& p : packets)
-        if (auto ev = parseS2C(p)) world_.apply(*ev, nowMs);
+    for (const Bytes& p : packets) {
+        auto ev = parseS2C(p);
+        if (!ev) continue;
+        world_.apply(*ev, nowMs);
+        if (const auto* bar = std::get_if<EvHotkeys>(&*ev)) {
+            int filled = 0;
+            for (const Hotkey& k : bar->keys) filled += k.id != 0;
+            log_.push_back("hotkey bar from the server: " + std::to_string(filled) + " filled slot(s)");
+        }
+    }
 }
 
 void Session::onClosed(SocketId s) {

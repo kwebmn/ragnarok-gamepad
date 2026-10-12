@@ -84,7 +84,7 @@ private:
     void attack(const WorldState& world, uint32_t now, TickOutput& out);
     void useSlot(int slot, bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
     void pickup(bool repeat, const WorldState& world, uint32_t now, TickOutput& out);
-    void clearTarget(TickOutput& out);
+    void clearTarget(const WorldState& world, uint32_t now, TickOutput& out);
     void stopAttacking();
     void attackAgainSoon(uint32_t now);
     void stepApproach(const WorldState& world, uint32_t now, TickOutput& out);

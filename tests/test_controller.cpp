@@ -668,6 +668,22 @@ TEST(ctl_r3_clears_target_and_stops_attack) {
     CHECK(o.rumble == Rumble::None);
 }
 
+TEST(ctl_r3_also_stops_a_walk_up) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{112, 100});  // out of Fire Bolt's range
+    c.tick(pad(kPadUp), w, view(), 1000);  // walking up to cast
+    CHECK(c.approaching());
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{111, 100}}, 1050);  // the server walks us
+    c.tick(pad(), w, view(), 1100);
+    TickOutput o = c.tick(pad(kPadR3), w, view(), 1300);
+    CHECK(!c.approaching());
+    CHECK_EQ(o.packets.size(), 2u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0118);
+    CHECK_EQ(pid(pkt(o, 1)), 0x00a7);  // and stop where we are
+    CHECK(decodePos3(pkt(o, 1).data(), 5) == w.selfPos(1300));
+}
+
 TEST(ctl_right_stick_picks_in_direction) {
     Controller c(Config{});
     WorldState w = world();

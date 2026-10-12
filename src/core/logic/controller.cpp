@@ -264,7 +264,7 @@ void Controller::fire(const Binding& b, bool repeat, const WorldState& world, ui
             stopAttacking();
             break;
         case Action::ClearTarget:
-            clearTarget(out);
+            clearTarget(world, now, out);
             break;
     }
 }
@@ -362,11 +362,13 @@ void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, Tick
     out.notes.push_back("walking to item " + std::to_string(best->id));
 }
 
-void Controller::clearTarget(TickOutput& out) {
+void Controller::clearTarget(const WorldState& world, uint32_t now, TickOutput& out) {
     aiming_ = false;
     aimLatched_ = true;  // clicking the stick may push it too: no new pick until it comes back
     if (target_ == 0 && !wantAttack_) return;
     out.packets.push_back(buildStopAttack());
+    // 0x0118 does not stop a walk up to the target (ours, or the client's after "too far"): stop it too.
+    if (!walking_ && world.selfMoving(now)) out.packets.push_back(buildWalk(world.selfPos(now)));
     target_ = 0;
     stopAttacking();
     approach_.reset();

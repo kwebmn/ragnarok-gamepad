@@ -146,19 +146,19 @@ std::optional<Action> parseAction(const std::string& token) {
     return std::nullopt;
 }
 
-std::string actionLabel(Action a) {
+std::string actionLabel(Action a, Lang lang) {
     switch (a.kind) {
         case Action::Kind::None: return "—";
-        case Action::Kind::Attack: return "Атака";
+        case Action::Kind::Attack: return tr(lang, Text::Attack);
         case Action::Kind::Slot: {
             const int row = a.slot / 9 + 1;
-            std::string label = "Слот F" + std::to_string(a.slot % 9 + 1);
-            if (row > 1) label += ", ряд " + std::to_string(row);
+            std::string label = std::string(tr(lang, Text::Slot)) + " F" + std::to_string(a.slot % 9 + 1);
+            if (row > 1) label += ", " + std::string(tr(lang, Text::Row)) + " " + std::to_string(row);
             return label;
         }
-        case Action::Kind::Pickup: return "Подобрать";
-        case Action::Kind::SitStand: return "Сесть / встать";
-        case Action::Kind::ClearTarget: return "Сбросить цель";
+        case Action::Kind::Pickup: return tr(lang, Text::Pickup);
+        case Action::Kind::SitStand: return tr(lang, Text::SitStand);
+        case Action::Kind::ClearTarget: return tr(lang, Text::ClearTarget);
     }
     return "—";
 }
@@ -221,8 +221,9 @@ Profiles withLayout(Profiles onDisk, uint32_t charId, const std::string& name, c
 
 std::string formatProfiles(const Profiles& profiles) {
     std::ostringstream out;
-    out << "; uaRO Pad: раскладки кнопок по персонажам. Файл пишет модуль из меню (Start в игре).\n";
-    out << "; Править руками можно при закрытом клиенте. Действия: none, attack, slot 1-27, pickup, sit, untarget.\n\n";
+    // ASCII only: the character names are in the system code page, and one file should have one encoding.
+    out << "; uaRO Pad: button layouts per character. The pad writes this file from its menu (Start in the game).\n";
+    out << "; Edit it by hand only while the client is closed. Actions: none, attack, slot 1-27, pickup, sit, untarget.\n\n";
     out << "[default]\n";
     writeSection(out, profiles.fallback);
     for (const auto& [id, c] : profiles.characters) {

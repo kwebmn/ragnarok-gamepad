@@ -98,12 +98,12 @@ std::vector<SettingsMenu::Row> SettingsMenu::rows() const {
     rows.reserve(rowCount());
     for (size_t i = 0; i < kBindableCount; ++i) {
         const Action& a = bindings_[i];
-        std::string action = actionLabel(a);
+        std::string action = actionLabel(a, lang_);
         if (a.kind == Action::Kind::Slot && a.slot < slotNames_.size() && !slotNames_[a.slot].empty())
             action += " — " + slotNames_[a.slot];
         rows.push_back(Row{buttonLabel(i), action, selected_ == i});
     }
-    rows.push_back(Row{"", "Вернуть всё по умолчанию", selected_ == kBindableCount});
+    rows.push_back(Row{"", tr(lang_, Text::ResetButtons), selected_ == kBindableCount});
     return rows;
 }
 

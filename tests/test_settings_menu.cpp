@@ -121,11 +121,14 @@ TEST(menu_rows_show_what_is_in_the_slots) {
     std::array<std::string, kHotkeySlots> slots{};
     slots[0] = "AC_DOUBLE";
     m.open(defaultBindings(), slots, 0, 0);
-    const std::vector<SettingsMenu::Row> rows = m.rows();
+    std::vector<SettingsMenu::Row> rows = m.rows();
     CHECK_EQ(rows.size(), m.rowCount());
     CHECK(rows[rowOf(kPadX)].button == "X");
+    CHECK(rows[rowOf(kPadX)].action == "Slot F1 — AC_DOUBLE");  // English unless told otherwise
+    CHECK(rows[rowOf(kPadY)].action == "Slot F2");  // nothing known about F2
+    m.setLang(Lang::Ru);
+    rows = m.rows();
     CHECK(rows[rowOf(kPadX)].action == "Слот F1 — AC_DOUBLE");
-    CHECK(rows[rowOf(kPadY)].action == "Слот F2");  // nothing known about F2
     CHECK(rows[0].selected && !rows[1].selected);
     CHECK(rows.back().button.empty() && !rows.back().action.empty());
 }

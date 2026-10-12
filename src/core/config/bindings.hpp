@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 
+#include "core/i18n.hpp"
 #include "core/logic/pad.hpp"
 
 namespace uapad {
@@ -35,7 +36,7 @@ const char* buttonToken(size_t i);  // in the file: "A", "LB", "UP"...
 const char* buttonLabel(size_t i);  // in the menu (UTF-8): "A", "D-pad ↑"...
 std::string actionToken(Action a);  // in the file: "attack", "slot 12"...
 std::optional<Action> parseAction(const std::string& token);
-std::string actionLabel(Action a);  // in the menu (UTF-8): "Атака", "Слот F3, ряд 2"...
+std::string actionLabel(Action a, Lang lang);  // in the menu (UTF-8): "Attack", "Slot F3, row 2"...
 
 // Every character's layout, as kept in uaro-pad-binds.ini.
 struct Profiles {

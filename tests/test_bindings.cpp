@@ -98,11 +98,20 @@ TEST(bindings_bad_lines_are_skipped) {
 }
 
 TEST(bindings_labels) {
-    CHECK(std::string(actionLabel(slot(0))) == "Слот F1");
-    CHECK(std::string(actionLabel(slot(11))) == "Слот F3, ряд 2");
-    CHECK(std::string(actionLabel(kind(Action::Kind::None))) == "—");
+    CHECK(actionLabel(slot(0), Lang::Ru) == "Слот F1");
+    CHECK(actionLabel(slot(11), Lang::Ru) == "Слот F3, ряд 2");
+    CHECK(actionLabel(kind(Action::Kind::None), Lang::En) == "—");
     CHECK(std::string(buttonLabel(indexOf(kPadUp))) == "D-pad ↑");
     CHECK(std::string(buttonToken(indexOf(kPadRight))) == "RIGHT");
+}
+
+TEST(bindings_file_header_is_ascii) {  // one encoding in the file: the system one of the character names
+    const std::string text = formatProfiles(Profiles{});
+    bool ascii = true;
+    for (unsigned char c : text) ascii = ascii && c < 0x80;
+    CHECK(ascii);
+    CHECK(text.find("; ") == 0);
+    CHECK(parseProfiles(text).fallback == defaultBindings());
 }
 
 TEST(bindings_saving_one_layout_keeps_the_others) {

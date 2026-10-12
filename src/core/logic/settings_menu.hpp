@@ -27,6 +27,7 @@ public:
     void open(const Bindings& current, const std::array<std::string, kHotkeySlots>& slotNames, uint16_t heldButtons,
               uint32_t nowMs, float lx = 0, float ly = 0);
     void close() { open_ = false; }
+    void setLang(Lang lang) { lang_ = lang; }  // of the labels in rows()
     bool isOpen() const { return open_; }
 
     // One frame of the pad: up/down picks a row, left/right changes its action (held: repeats), A or Start
@@ -53,6 +54,7 @@ private:
     };
 
     bool open_ = false;
+    Lang lang_ = Lang::En;
     Bindings bindings_{};
     std::array<std::string, kHotkeySlots> slotNames_{};
     size_t selected_ = 0;

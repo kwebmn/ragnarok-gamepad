@@ -38,6 +38,9 @@ struct State {
     CursorBridge bridge;     // drives the client's own cursor (it only reads DirectInput deltas)
     bool lastFocused = false;
     int loggedSteps = 0;
+    int pointersHooked = 0;
+    DWORD lastPointerCheckMs = 0;
+    bool checkedPointers = false;
     bool loggedBufferRead = false;
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
@@ -186,6 +189,12 @@ void tick() {
     if (g_unseenDown.exchange(false)) s.session->onUnobserved(s.session->mapSocket(), Direction::ServerToClient);
     const PadState pad = s.pad.poll();
     logPad(pad);
+    // The client fills its send/recv pointers itself (and may refill them): keep them going through us.
+    if (!s.checkedPointers || now - s.lastPointerCheckMs >= (s.pointersHooked >= 2 ? 2000u : 250u)) {
+        s.checkedPointers = true;
+        s.lastPointerCheckMs = now;
+        s.pointersHooked = hooks::patchClientPointers();
+    }
     const ViewInfo view = currentView();
     if (view.focused != s.lastFocused) {  // the real mouse may have moved the client's cursor meanwhile
         s.lastFocused = view.focused;
@@ -376,14 +385,6 @@ void onSent(SOCKET sock, const char* buf, int n) {
     });
 }
 
-void onSentBuffers(SOCKET sock, LPWSABUF bufs, DWORD count, DWORD sent) {
-    if (!bufs) return;
-    std::string joined;
-    for (DWORD i = 0; i < count && joined.size() < sent; ++i)
-        joined.append(bufs[i].buf, std::min<size_t>(bufs[i].len, sent - joined.size()));
-    onSent(sock, joined.data(), int(joined.size()));
-}
-
 void onClose(SOCKET sock) {
     State& s = S();
     guarded("close", [&] {
@@ -391,10 +392,6 @@ void onClose(SOCKET sock) {
         s.session->onClosed(uintptr_t(sock));
         g_mapSocket.store(s.session->mapSocket());
     });
-}
-
-void onOverlappedSend(SOCKET sock) {
-    guarded("overlapped send", [&] { noteUnseen(sock, true); });
 }
 
 DWORD mouseCooperativeLevel(DWORD flags) {

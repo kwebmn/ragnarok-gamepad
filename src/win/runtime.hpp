@@ -19,9 +19,6 @@ void onGetCursorPos(LPPOINT p);
 void onMessagePump();
 void onRecv(SOCKET sock, const char* buf, int n);
 void onSent(SOCKET sock, const char* buf, int n);
-void onSentBuffers(SOCKET sock, LPWSABUF bufs, DWORD count, DWORD sent);
 void onClose(SOCKET sock);
-// The client used an overlapped WSASend: those bytes are never seen, so injecting becomes unsafe.
-void onOverlappedSend(SOCKET sock);
 
 }  // namespace uapad::runtime

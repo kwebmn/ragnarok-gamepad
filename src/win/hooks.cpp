@@ -1,5 +1,9 @@
 #include "win/hooks.hpp"
 
+#include <algorithm>
+#include <vector>
+
+#include "core/call_targets.hpp"
 #include "win/iat.hpp"
 #include "win/log.hpp"
 #include "win/runtime.hpp"
@@ -9,7 +13,6 @@ namespace {
 
 using recv_t = int(WSAAPI*)(SOCKET, char*, int, int);
 using send_t = int(WSAAPI*)(SOCKET, const char*, int, int);
-using wsasend_t = int(WSAAPI*)(SOCKET, LPWSABUF, DWORD, LPDWORD, DWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 using closesocket_t = int(WSAAPI*)(SOCKET);
 using getcursorpos_t = BOOL(WINAPI*)(LPPOINT);
 using peekmessage_t = BOOL(WINAPI*)(LPMSG, HWND, UINT, UINT, UINT);
@@ -17,7 +20,7 @@ using wsagetlasterror_t = int(WSAAPI*)();
 
 recv_t o_recv = nullptr;
 send_t o_send = nullptr;
-wsasend_t o_wsasend = nullptr;
+std::vector<uint32_t> g_pointerSlots;  // client variables called as `call [X]`
 closesocket_t o_closesocket = nullptr;
 getcursorpos_t o_getcursorpos = nullptr;
 peekmessage_t o_peekmessage = nullptr;
@@ -33,16 +36,6 @@ int WSAAPI h_send(SOCKET s, const char* buf, int len, int flags) {
     const int n = o_send(s, buf, len, flags);
     if (n > 0) runtime::onSent(s, buf, n);
     return n;
-}
-
-int WSAAPI h_wsasend(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD sent, DWORD flags, LPWSAOVERLAPPED ov,
-                     LPWSAOVERLAPPED_COMPLETION_ROUTINE done) {
-    const int r = o_wsasend(s, bufs, count, sent, flags, ov, done);
-    if (ov)
-        runtime::onOverlappedSend(s);
-    else if (r == 0 && sent)
-        runtime::onSentBuffers(s, bufs, count, *sent);
-    return r;
 }
 
 int WSAAPI h_closesocket(SOCKET s) {
@@ -88,11 +81,56 @@ void install() {
     HMODULE user32 = GetModuleHandleA("user32.dll");
     o_wsagetlasterror = proc<wsagetlasterror_t>(ws2, "WSAGetLastError");
     hook(ws2, "recv", &h_recv, o_recv);
-    hook(ws2, "send", &h_send, o_send);
-    hook(ws2, "WSASend", &h_wsasend, o_wsasend);
+    // send stays untouched in the import table: the client's protection thread compares that slot (and
+    // WSASend's) with what it saw at start-up. Game traffic goes through the client's own pointers anyway.
+    o_send = proc<send_t>(ws2, "send");
     hook(ws2, "closesocket", &h_closesocket, o_closesocket);
     hook(user32, "GetCursorPos", &h_getcursorpos, o_getcursorpos);
     hook(user32, "PeekMessageA", &h_peekmessage, o_peekmessage);
+    findClientPointers();
+}
+
+void findClientPointers() {
+    auto* base = reinterpret_cast<BYTE*>(GetModuleHandleA(nullptr));
+    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    const IMAGE_SECTION_HEADER* first = IMAGE_FIRST_SECTION(nt);
+    const WORD count = nt->FileHeader.NumberOfSections;
+    g_pointerSlots.clear();
+    for (WORD c = 0; c < count; ++c) {
+        if (!(first[c].Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+        const uint8_t* code = base + first[c].VirtualAddress;
+        const size_t codeLen = first[c].Misc.VirtualSize;
+        for (WORD d = 0; d < count; ++d) {
+            if (!(first[d].Characteristics & IMAGE_SCN_MEM_WRITE) || (first[d].Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+            const uint32_t lo = uint32_t(reinterpret_cast<uintptr_t>(base) + first[d].VirtualAddress);
+            const uint32_t hi = lo + std::max<uint32_t>(first[d].Misc.VirtualSize, first[d].SizeOfRawData);
+            for (uint32_t x : indirectCallTargets(code, codeLen, lo, hi)) g_pointerSlots.push_back(x);
+        }
+    }
+    LOG_INFO("client call-through pointers: %u", unsigned(g_pointerSlots.size()));
+}
+
+int patchClientPointers() {
+    void* const realSend = reinterpret_cast<void*>(o_send);
+    void* const realRecv = reinterpret_cast<void*>(o_recv);
+    void* const ourSend = reinterpret_cast<void*>(&h_send);
+    void* const ourRecv = reinterpret_cast<void*>(&h_recv);
+    int ours = 0;
+    for (uint32_t slot : g_pointerSlots) {
+        auto* p = reinterpret_cast<void* volatile*>(uintptr_t(slot));
+        void* const v = *p;
+        if (v == ourSend || v == ourRecv) {
+            ++ours;
+            continue;
+        }
+        void* const with = v == realSend && realSend ? ourSend : v == realRecv && realRecv ? ourRecv : nullptr;
+        if (!with) continue;
+        *p = with;  // a plain .data variable of the client; the game thread is the only caller
+        ++ours;
+        LOG_INFO("client %s pointer at 0x%08lx now goes through the pad", with == ourSend ? "send" : "recv",
+                 (unsigned long)slot);
+    }
+    return ours;
 }
 
 int lastError() { return o_wsagetlasterror ? o_wsagetlasterror() : 0; }

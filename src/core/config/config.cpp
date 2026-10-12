@@ -70,7 +70,10 @@ Config parseConfig(const std::string& text) {
     std::istringstream in(text);
     std::string line;
     std::string section;
+    bool first = true;
     while (std::getline(in, line)) {
+        if (first && line.rfind("\xEF\xBB\xBF", 0) == 0) line = line.substr(3);  // saved by Notepad with a BOM
+        first = false;
         const size_t comment = line.find(';');
         if (comment != std::string::npos) line = line.substr(0, comment);
         line = trim(line);

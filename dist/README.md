@@ -79,7 +79,7 @@ Start opens the menu "uaRO Pad — character name" over the game window. The gam
 
 A button can do: attack, any hotkey bar slot — F1–F9 of all three rows (you can see what is in the slot), pick up items, sit / stand, clear the target, switch the right stick (camera / target), or nothing. Start, Back and the sticks cannot be reassigned.
 
-If you saved a layout before 0.5, R3 still clears the target there: in the Buttons tab set R3 to "Camera / target" and L3 to "Clear target" (Y on a row gives it the new default).
+Layouts saved before 0.5 are moved by themselves: R3 switches the right stick to the camera there too, and an unused L3 clears the target.
 
 Each character has a layout of its own: the module recognises the character when you enter the game. A new character starts with the default layout; if you open the menu before entering a map, that default is what you edit. Layouts are kept in `uaro-pad-binds.ini` in the client folder; the module writes it.
 

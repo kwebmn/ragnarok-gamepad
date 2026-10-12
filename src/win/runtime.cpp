@@ -503,6 +503,10 @@ void init() {
         const Profiles layouts = parseProfiles(readFile(s.bindsPath));
         s.session->setProfiles(layouts);
         LOG_INFO("layouts: %u character(s) in uaro-pad-binds.ini", unsigned(layouts.characters.size()));
+        if (layouts.movedToCamera > 0)
+            LOG_INFO("layouts from before 0.5: R3 now switches the right stick to the camera, an unused L3 clears "
+                     "the target (%d layout(s))",
+                     layouts.movedToCamera);
         hooks::install();
         s.barSupported = clientbar::supported();
         s.mouseSupported = clientmouse::supported();

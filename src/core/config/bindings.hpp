@@ -47,10 +47,14 @@ struct Profiles {
     };
     Bindings fallback = defaultBindings();  // [default]: characters without a section of their own
     std::map<uint32_t, Character> characters;  // [char <id>]
+    // Layouts saved before 0.5 (a file without [file] version 2) that had R3 clearing the target: R3 now
+    // switches the right stick to the camera, and an unused L3 clears the target, as the 0.5 defaults do.
+    int movedToCamera = 0;
     Bindings forCharacter(uint32_t charId) const;
 };
 
-// Missing keys fall back to [default], then to defaultBindings(); unknown lines are skipped.
+// Missing keys fall back to [default], then to defaultBindings(); unknown lines are skipped. Layouts from
+// before 0.5 are moved to the camera on R3 (see Profiles::movedToCamera).
 Profiles parseProfiles(const std::string& text);
 // `onDisk` with one layout put in (charId 0: [default]) and every other one left as it is, so that two
 // clients saving different characters do not erase each other's layouts.

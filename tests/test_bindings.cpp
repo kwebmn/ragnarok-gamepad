@@ -138,3 +138,30 @@ TEST(bindings_camera_toggle_token_and_labels) {
     CHECK(actionLabel(kind(Action::Kind::CameraToggle), Lang::En) == "Camera / target");
     CHECK(actionLabel(kind(Action::Kind::CameraToggle), Lang::Ru) == "Камера / цель");
 }
+
+TEST(bindings_layouts_from_before_0_5_get_the_camera_on_r3) {
+    const Profiles p = parseProfiles(
+        "[default]\nR3 = untarget\nL3 = none\n"
+        "[char 7]\nname = Hunter\nR3 = untarget\nL3 = none\nX = slot 2\n"
+        "[char 8]\nR3 = untarget\nL3 = slot 10\n");  // L3 in use: it stays
+    CHECK(p.fallback[indexOf(kPadR3)] == kind(Action::Kind::CameraToggle));
+    CHECK(p.fallback[indexOf(kPadL3)] == kind(Action::Kind::ClearTarget));
+    const Bindings hunter = p.forCharacter(7);
+    CHECK(hunter[indexOf(kPadR3)] == kind(Action::Kind::CameraToggle));
+    CHECK(hunter[indexOf(kPadL3)] == kind(Action::Kind::ClearTarget));
+    CHECK(hunter[indexOf(kPadX)] == slot(1));  // the rest as saved
+    const Bindings other = p.forCharacter(8);
+    CHECK(other[indexOf(kPadR3)] == kind(Action::Kind::CameraToggle));
+    CHECK(other[indexOf(kPadL3)] == slot(9));
+    CHECK_EQ(p.movedToCamera, 3);
+}
+
+TEST(bindings_a_0_5_file_keeps_r3_as_saved) {
+    const std::string text = formatProfiles(Profiles{});
+    CHECK(text.find("[file]") != std::string::npos);
+    const Profiles p = parseProfiles("[file]\nversion = 2\n[default]\nR3 = untarget\nL3 = none\n");
+    CHECK(p.fallback[indexOf(kPadR3)] == kind(Action::Kind::ClearTarget));  // chosen in 0.5: left alone
+    CHECK(p.fallback[indexOf(kPadL3)] == kind(Action::Kind::None));
+    CHECK_EQ(p.movedToCamera, 0);
+    CHECK_EQ(parseProfiles(text).movedToCamera, 0);
+}

@@ -59,19 +59,37 @@ std::optional<size_t> buttonIndex(const std::string& token) {
     return std::nullopt;
 }
 
+constexpr int kFileVersion = 2;  // 2: written by 0.5, R3 as the player left it
+
 struct Section {
-    enum class Kind { Default, Character, Other };
+    enum class Kind { Default, Character, File, Other };
     Kind kind = Kind::Other;
     uint32_t charId = 0;
     std::string name;
+    int version = 0;
     std::vector<std::pair<size_t, Action>> keys;
 };
+
+// A layout from before 0.5: R3 cleared the target where 0.5 puts the camera switch.
+bool moveToCamera(Bindings& b) {
+    size_t r3 = kBindableCount, l3 = kBindableCount;
+    for (size_t i = 0; i < kBindableCount; ++i) {
+        if (kBindableButtons[i] == kPadR3) r3 = i;
+        if (kBindableButtons[i] == kPadL3) l3 = i;
+    }
+    if (r3 == kBindableCount || b[r3].kind != Action::Kind::ClearTarget) return false;
+    b[r3] = Action{Action::Kind::CameraToggle, 0};
+    if (l3 != kBindableCount && b[l3].kind == Action::Kind::None) b[l3] = Action{Action::Kind::ClearTarget, 0};
+    return true;
+}
 
 Section sectionFor(const std::string& header) {
     Section s;
     const std::string h = lower(trim(header));
     if (h == "default") {
         s.kind = Section::Kind::Default;
+    } else if (h == "file") {
+        s.kind = Section::Kind::File;
     } else if (h.rfind("char ", 0) == 0) {
         const std::string digits = trim(h.substr(5));
         char* end = nullptr;
@@ -196,11 +214,16 @@ Profiles parseProfiles(const std::string& text) {
         const std::string value = trim(line.substr(eq + 1));
         if (lower(key) == "name") {
             current->name = value;
+        } else if (lower(key) == "version") {
+            current->version = std::atoi(value.c_str());
         } else if (auto button = buttonIndex(key)) {
             if (auto action = parseAction(value)) current->keys.emplace_back(*button, *action);
         }
     }
     Profiles p;
+    int version = 1;
+    for (const Section& s : sections)
+        if (s.kind == Section::Kind::File && s.version > 0) version = s.version;
     for (const Section& s : sections)
         if (s.kind == Section::Kind::Default)
             for (const auto& [button, action] : s.keys) p.fallback[button] = action;
@@ -210,6 +233,10 @@ Profiles parseProfiles(const std::string& text) {
         c.name = s.name;
         c.bindings = p.fallback;
         for (const auto& [button, action] : s.keys) c.bindings[button] = action;
+    }
+    if (version < kFileVersion) {
+        p.movedToCamera += moveToCamera(p.fallback) ? 1 : 0;
+        for (auto& entry : p.characters) p.movedToCamera += moveToCamera(entry.second.bindings) ? 1 : 0;
     }
     return p;
 }
@@ -231,6 +258,7 @@ std::string formatProfiles(const Profiles& profiles) {
     out << "; uaRO Pad: button layouts per character. The pad writes this file from its menu (Start in the game).\n";
     out << "; Edit it by hand only while the client is closed. Actions: none, attack, slot 1-27, pickup, sit, untarget,\n";
     out << "; camera (the right stick switches between picking targets and turning the camera).\n\n";
+    out << "[file]\nversion = " << kFileVersion << "\n\n";
     out << "[default]\n";
     writeSection(out, profiles.fallback);
     for (const auto& [id, c] : profiles.characters) {

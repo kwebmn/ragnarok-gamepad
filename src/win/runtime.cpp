@@ -6,6 +6,7 @@
 #include <exception>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -108,6 +109,23 @@ std::string readFile(const std::string& path) {
     std::ostringstream ss;
     ss << f.rdbuf();
     return ss.str();
+}
+
+// The file's bytes; "" when there is no such file; nothing when it is there but cannot be read now (a virus
+// scanner or an editor holding it). Saving over an unread file would replace the player's file with a stub.
+std::optional<std::string> readExisting(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (f) {
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        if (f.bad()) return std::nullopt;
+        return ss.str();
+    }
+    const DWORD attrs = GetFileAttributesA(path.c_str());
+    const DWORD err = GetLastError();
+    if (attrs == INVALID_FILE_ATTRIBUTES && (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND))
+        return std::string();
+    return std::nullopt;
 }
 
 bool onGameThread() {
@@ -276,7 +294,9 @@ bool saveSettings(const Settings& after) {
     State& s = S();
     const std::vector<IniEdit> edits = settingsEdits(s.menuBefore, after, s.sleepWhenOn);
     if (edits.empty()) return true;
-    const bool written = writeAtomically(s.iniPath, applyIniEdits(readFile(s.iniPath), edits));
+    const std::optional<std::string> onDisk = readExisting(s.iniPath);
+    if (!onDisk) LOG_ERROR("could not read %s; settings not saved, they work until the client closes", s.iniPath.c_str());
+    const bool written = onDisk && writeAtomically(s.iniPath, applyIniEdits(*onDisk, edits));
     if (written) LOG_INFO("uaro-pad.ini: %u setting(s) saved", unsigned(edits.size()));
     const Config old = s.cfg;
     applySettings(after, s.sleepWhenOn, s.cfg);
@@ -301,7 +321,12 @@ bool saveLayouts() {
     const uint32_t id = s.session->charId();
     const Profiles& mine = s.session->profiles();
     const Bindings saved = id ? mine.forCharacter(id) : mine.fallback;
-    const Profiles merged = withLayout(parseProfiles(readFile(s.bindsPath)), id, s.session->charName(), saved);
+    const std::optional<std::string> onDisk = readExisting(s.bindsPath);
+    if (!onDisk) {
+        LOG_ERROR("could not read %s; not saved, the layout works until the client closes", s.bindsPath.c_str());
+        return false;
+    }
+    const Profiles merged = withLayout(parseProfiles(*onDisk), id, s.session->charName(), saved);
     if (!writeAtomically(s.bindsPath, formatProfiles(merged))) return false;  // the layout works until the client closes
     s.session->setProfiles(merged);  // with whatever other clients saved
     return true;

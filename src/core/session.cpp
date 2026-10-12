@@ -85,6 +85,7 @@ void Session::onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t n
         auto ev = parseS2C(p);
         if (!ev) continue;
         world_.apply(*ev, nowMs);
+        if (std::holds_alternative<EvAuthOk>(*ev) || std::holds_alternative<EvMapChange>(*ev)) controller_.onMapLoaded();
         if (const auto* bar = std::get_if<EvHotkeys>(&*ev)) {
             int filled = 0;
             for (const Hotkey& k : bar->keys) filled += k.id != 0;

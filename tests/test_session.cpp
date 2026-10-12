@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstring>
 
 #include "core/proto/c2s.hpp"
 #include "core/proto/packet_tables.hpp"
@@ -303,4 +304,24 @@ TEST(session_client_skill_resumes_the_pad_attack) {
     const std::vector<Bytes> ready = s.takeInjectable(500);
     CHECK_EQ(ready.size(), 1u);
     CHECK(!ready.empty() && rd16(ready[0].data(), 0) == 0x0190);
+}
+
+TEST(session_new_map_forgets_the_camera_turn) {
+    Session s{Config{}};
+    connect(s);
+    PadState walk;
+    walk.connected = true;
+    walk.lx = 1.0f;
+    s.tick(walk, kView, 100);
+    const Bytes req = buildWalk(Cell{100, 107});
+    s.onClientSent(kMap, req.data(), req.size(), 110);
+    CHECK_EQ(s.controller().camera().samples(), 1u);
+    Bytes change(size_t(s2cLength(0x0091)), 0);  // the client may set its camera back on a new map
+    wr16(change, 0, 0x0091);
+    std::memcpy(change.data() + 2, "prontera.gat", 12);
+    wr16(change, 18, 150);
+    wr16(change, 20, 150);
+    s.onServerData(kMap, change.data(), change.size(), 200);
+    CHECK_EQ(s.world().selfPos(200), (Cell{150, 150}));
+    CHECK_EQ(s.controller().camera().samples(), 0u);
 }

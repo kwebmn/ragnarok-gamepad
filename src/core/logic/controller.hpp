@@ -48,6 +48,8 @@ public:
     // The client asked for a skill itself (0x0072 / 0x0113, e.g. from the keyboard): the server ends our
     // attack for it, so ask for the attack again.
     void onClientSkill(uint32_t nowMs);
+    // A map was loaded. The client may have set its camera back, and one walk teaches the turn again.
+    void onMapLoaded() { camera_.reset(); }
 
     bool enabled() const { return enabled_; }
     uint32_t target() const { return target_; }

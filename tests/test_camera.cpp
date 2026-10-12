@@ -60,3 +60,11 @@ TEST(camera_follows_a_turn) {
     CHECK_EQ(c.samples(), 8u);
     CHECK(near(deg(c.radians()), 90, 1e-6));  // 6 new against 2 old samples
 }
+
+TEST(camera_reset_forgets_the_turn) {
+    CameraYaw c;
+    c.addSample(132, 0, 0, 7);
+    c.reset();
+    CHECK_EQ(c.samples(), 0u);
+    CHECK(near(c.radians(), 0));
+}

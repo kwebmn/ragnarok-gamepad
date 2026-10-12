@@ -11,6 +11,10 @@ class CameraYaw {
 public:
     // sx, sy: screen offset, +y down. wx, wy: map offset in cells, +y north.
     void addSample(int sx, int sy, int wx, int wy);
+    void reset() {
+        diffs_.clear();
+        yaw_ = 0;
+    }
     // Map bearing minus screen bearing (both counter-clockwise from east / from the right), radians.
     double radians() const { return yaw_; }
     // Unit map direction (+y north) for a non-zero screen direction (+y down).

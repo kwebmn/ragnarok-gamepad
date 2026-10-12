@@ -9,6 +9,17 @@ int sleepOn(int sleepWhenOn) { return sleepWhenOn > 0 ? sleepWhenOn : kSleepWhen
 
 const char* onOff(bool v) { return v ? "1" : "0"; }
 
+std::string markText(MarkStyle style, Lang lang) {
+    switch (style) {
+        case MarkStyle::Off: return tr(lang, Text::Off);
+        case MarkStyle::Sight: return tr(lang, Text::MarkSight);
+        case MarkStyle::Ruwach: return tr(lang, Text::MarkRuwach);
+        case MarkStyle::Poison: return tr(lang, Text::MarkPoison);
+        case MarkStyle::Gasp: break;
+    }
+    return tr(lang, Text::MarkGasp);
+}
+
 int mouseKeyIndex(SettingRow row) { return row == SettingRow::Middle ? 0 : row == SettingRow::Button4 ? 1 : 2; }
 
 Text labelOf(SettingRow row) {
@@ -44,7 +55,7 @@ IniEdit editOf(const Settings& s, SettingRow row, int sleepWhenOn) {
         case SettingRow::Mark: break;
         case SettingRow::Count: break;
     }
-    return IniEdit{"aim", "mark", onOff(s.mark)};
+    return IniEdit{"aim", "mark", markStyleToken(s.mark)};
 }
 
 bool same(const Settings& a, const Settings& b, SettingRow row) {
@@ -96,7 +107,9 @@ Settings changeSetting(Settings s, SettingRow row, int dir) {
         case SettingRow::Borderless: s.borderless = !s.borderless; break;
         case SettingRow::SaveCpu: s.saveCpu = !s.saveCpu; break;
         case SettingRow::Rumble: s.rumble = !s.rumble; break;
-        case SettingRow::Mark: s.mark = !s.mark; break;
+        case SettingRow::Mark:
+            s.mark = MarkStyle(((int(s.mark) + (dir > 0 ? 1 : -1)) % kMarkStyles + kMarkStyles) % kMarkStyles);
+            break;
         case SettingRow::Count: break;
     }
     return s;
@@ -137,7 +150,7 @@ std::string settingValue(const Settings& s, SettingRow row, Lang lang) {
         case SettingRow::Borderless: return onOffText(s.borderless);
         case SettingRow::SaveCpu: return onOffText(s.saveCpu);
         case SettingRow::Rumble: return onOffText(s.rumble);
-        case SettingRow::Mark: return onOffText(s.mark);
+        case SettingRow::Mark: return markText(s.mark, lang);
         case SettingRow::Count: break;
     }
     return "";

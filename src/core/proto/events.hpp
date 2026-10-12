@@ -37,7 +37,11 @@ struct EvActor {                                     // 0x0078, 0x007b, 0x007c, 
     uint16_t speed = 0;
     Cell from;
     Cell to;
+    uint16_t opt1 = 0;  // the unit's state, as the client shows it (stone, poison, Sight...)
+    uint16_t opt2 = 0;
+    uint32_t option = 0;
 };
+struct EvActorOption { uint32_t id = 0; uint16_t opt1 = 0; uint16_t opt2 = 0; uint32_t option = 0; };  // 0x0119, 0x0229
 struct EvActorMove { uint32_t id = 0; Cell from; Cell to; };      // 0x0086
 struct EvPetInfo { uint8_t type = 0; uint32_t id = 0; };          // 0x01a4 (type 0 = our pet's id)
 struct EvAction { uint32_t src = 0; uint32_t dst = 0; uint8_t type = 0; };  // 0x008a (2 sit, 3 stand)
@@ -63,6 +67,6 @@ struct EvActorName { uint32_t id = 0; std::string name; };        // 0x0095, 0x0
 using Event = std::variant<EvAuthOk, EvMapChange, EvSelfWalk, EvSetPos, EvVanish, EvActor, EvActorMove, EvPetInfo,
                            EvAction, EvSkillHit, EvGroundItem, EvGroundItemGone, EvInventory, EvItemAdd,
                            EvItemRemove, EvItemUsed, EvSkills, EvSkillUp, EvHotkeys, EvResurrect, EvSelfSpeed,
-                           EvActorName>;
+                           EvActorName, EvActorOption>;
 
 }  // namespace uapad

@@ -38,7 +38,7 @@ public:
     std::vector<Bytes> takeInjectable(uint32_t nowMs);
     bool canInject() const;
     void markInjectBroken();
-    void setMark(bool on) { mark_ = on; }  // [aim] mark, changed from the menu
+    void setMark(MarkStyle style);  // [aim] mark, changed from the menu
     // Appends the queued client-only packets (the "!" over a new target) to the `n` bytes the client is
     // about to receive on `s` in a buffer of `cap` bytes: only on the map socket, only while the server
     // stream is understood and stands at a packet boundary, only whole packets. Returns the bytes added.
@@ -71,11 +71,15 @@ private:
     };
 
     void feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs);
+    // Sight / Ruwach / Poison: the client draws the effect on the target; the one before gets its state back.
+    void updatePersistentMark(uint32_t nowMs);
     bool justStoppedWalking(uint32_t nowMs) const;
 
     WorldState world_;
     Controller controller_;
-    bool mark_ = true;  // [aim] mark
+    MarkStyle mark_ = MarkStyle::Gasp;  // [aim] mark
+    uint32_t marked_ = 0;   // the monster the client draws our persistent mark on
+    bool remark_ = false;   // the server redrew it (or the style changed): send the mark again
     bool padWalking_ = false;
     std::optional<uint32_t> walkStopMs_;  // the stick walk ended: what follows is logged for a moment
     std::optional<std::array<ClientBarSlot, kClientBarSlots>> loggedBar_;
@@ -88,7 +92,7 @@ private:
     bool downOk_ = false;
     bool injectOk_ = false;
     std::deque<std::pair<uint32_t, Bytes>> queue_;
-    std::deque<std::pair<uint32_t, Bytes>> toClient_;  // packets made up for the client, with the time queued
+    std::deque<std::pair<uint32_t, Bytes>> toClient_;  // packets made up for the client, with their deadline
     std::vector<std::string> log_;
 };
 

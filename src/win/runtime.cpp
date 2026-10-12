@@ -307,10 +307,10 @@ bool saveSettings(const Settings& after) {
         LOG_INFO("borderless window %s%s", s.cfg.borderless ? "on" : "off", ok ? "" : ": not possible now");
     }
     LOG_INFO("settings: language %s, cursor lock %d, activating click %s, mouse keys %s/%s/%s, CPU sleep %d ms, "
-             "rumble %d, mark %d",
+             "rumble %d, mark %s",
              langToken(s.cfg.lang), s.cfg.mouseLock ? 1 : 0, s.cfg.focusClick ? "to the game" : "kept out",
              fKeyToken(s.cfg.mouseKeys[0]).c_str(), fKeyToken(s.cfg.mouseKeys[1]).c_str(),
-             fKeyToken(s.cfg.mouseKeys[2]).c_str(), s.cfg.backgroundSleepMs, s.cfg.rumble ? 1 : 0, s.cfg.mark ? 1 : 0);
+             fKeyToken(s.cfg.mouseKeys[2]).c_str(), s.cfg.backgroundSleepMs, s.cfg.rumble ? 1 : 0, markStyleToken(s.cfg.mark));
     return written;
 }
 

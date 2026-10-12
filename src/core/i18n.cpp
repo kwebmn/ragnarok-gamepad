@@ -40,11 +40,15 @@ const Entry kTexts[] = {
     {"Borderless window", "Вікно без рамки", "Окно без рамки"},
     {"Save CPU in the background", "Економити процесор у фоні", "Экономить процессор в фоне"},
     {"Vibration", "Вібрація", "Вибрация"},
-    {"\"!\" over the target", "«!» над ціллю", "«!» над целью"},
+    {"Target mark", "Позначка цілі", "Метка цели"},
     {"on", "увімк.", "вкл."},
     {"off", "вимк.", "выкл."},
     {"stays out of the game", "не йде в гру", "не идёт в игру"},
     {"goes to the game", "йде в гру", "идёт в игру"},
+    {"\"!\" when chosen", "«!» при виборі", "«!» при выборе"},
+    {"fireball (Sight)", "вогник (Sight)", "огонёк (Sight)"},
+    {"light (Ruwach)", "світло (Ruwach)", "свет (Ruwach)"},
+    {"green tint", "зелений відтінок", "зелёный оттенок"},
 };
 static_assert(sizeof(kTexts) / sizeof(kTexts[0]) == size_t(Text::Count), "every Text needs its translations");
 

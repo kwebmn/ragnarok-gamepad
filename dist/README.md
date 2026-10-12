@@ -89,7 +89,7 @@ Each character has a layout of its own: the module recognises the character when
 | Borderless window | no title bar and borders; position in `[window] position` | `[window] borderless` |
 | Save CPU in the background | while the game is behind other windows it does not keep a whole CPU core busy | `[window] background_sleep_ms` |
 | Vibration | the gamepad's rumble | `[rumble] enabled` |
-| "!" over the target | the mark over a chosen monster (only you see it) | `[aim] mark` |
+| Target mark | how the target shows (only you see it): "!" when it is chosen, or for as long as it is the target a fireball circling it (Sight), a light circling it (Ruwach) or a green tint; or nothing | `[aim] mark` |
 
 Settings work right after "Save" and are written into `uaro-pad.ini` — only the changed keys; comments and everything else in the file stay as they were.
 
@@ -115,7 +115,7 @@ The client normally captures the mouse; the module leaves it free (Mouse Freedom
 - No cursor while the game window is active: check `freedom = 1` in `uaro-pad.ini`.
 - The game cursor lags behind the Windows cursor or drifts: send `uaro-pad.log` — the `cursor:` lines show where they part (`exact` means the module read the game's own cursor).
 - Clicks do not reach the game at all: send `uaro-pad.log`; until it is fixed, version 0.3 works the old way.
-- No "!" over the chosen monster: the log should have the line `target marks reach the client`. If the client crashes or disconnects after a target is picked, set `mark = 0` in `[aim]` and send the log.
+- No mark on the chosen monster: the log should have the line `target marks reach the client`. Some marks may not show on monsters in this client — try another one in the menu. If the client crashes or disconnects after a target is picked, set `mark = off` in `[aim]` and send the log.
 - The right stick picks a monster in the wrong direction: walk with the left stick in different directions (see above); if that does not help, send the log.
 - A held slot repeats too often or should not repeat: `repeat_ms` in `[skills]` (0: no repeat; also for LT).
 - The log is `uaro-pad.log` in the client folder, rewritten at every start. A detailed log: `log_level = debug`.

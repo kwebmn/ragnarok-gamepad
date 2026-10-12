@@ -54,6 +54,21 @@ TEST(world_actor_walk_interpolation_and_move) {
     CHECK(!w.actorPos(999, 0).has_value());
 }
 
+TEST(world_keeps_each_units_state) {
+    WorldState w;
+    w.reset(2000001);
+    w.apply(EvAuthOk{Cell{100, 100}}, 0);
+    EvActor mob{110000001, 1002, 0, 200, Cell{102, 100}, Cell{102, 100}};
+    mob.option = 0x4;
+    w.apply(mob, 0);
+    CHECK(w.actors().count(110000001) && w.actors().at(110000001).option == 0x4u);
+    w.apply(EvActorOption{110000001, 1, 2, 0x8}, 10);
+    const Actor& a = w.actors().at(110000001);
+    CHECK(a.opt1 == 1 && a.opt2 == 2 && a.option == 0x8u);
+    w.apply(EvActorOption{110000099, 1, 2, 3}, 20);  // someone we do not know: nothing to keep
+    CHECK_EQ(w.actors().count(110000099), 0u);
+}
+
 TEST(world_hits_sitting_death) {
     WorldState w = inGame();
     w.apply(EvAction{kMe, 110000001, 0}, 500);

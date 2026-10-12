@@ -255,7 +255,7 @@ TEST(session_mark_only_on_the_map_socket_and_only_while_fresh) {
 
 TEST(session_mark_off_in_config) {
     Config cfg;
-    cfg.mark = false;
+    cfg.mark = MarkStyle::Off;
     Session s{cfg};
     connect(s);
     TickOutput o = s.tick(pressA(), kView, 100);
@@ -267,13 +267,154 @@ TEST(session_mark_off_in_config) {
 
 TEST(session_mark_switched_off_from_the_menu) {
     Session s{Config{}};
-    s.setMark(false);
+    s.setMark(MarkStyle::Off);
     connect(s);
     TickOutput o = s.tick(pressA(), kView, 100);
     CHECK_EQ(o.mark, 110000001u);
     CHECK_EQ(s.takeInjectable(100).size(), 1u);  // the attack only: no name request
     uint8_t buf[64] = {0};
     CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 110), 0u);
+}
+
+namespace {
+
+// The client-only packets the pad adds at the next packet boundary, one by one.
+std::vector<Bytes> toClient(Session& s, uint32_t now) {
+    uint8_t buf[512] = {0};
+    const size_t n = s.appendForClient(kMap, buf, 0, sizeof buf, now);
+    std::vector<Bytes> out;
+    for (size_t o = 0; o + 2 <= n;) {
+        const int len = s2cLength(rd16(buf, o));
+        if (len <= 0 || o + size_t(len) > n) break;
+        out.emplace_back(buf + o, buf + o + len);
+        o += size_t(len);
+    }
+    return out;
+}
+
+bool unitState(const Bytes& p, uint32_t id, uint16_t opt2, uint32_t option) {
+    return p.size() == 15 && rd16(p.data(), 0) == 0x0229 && rd32(p.data(), 2) == id && rd16(p.data(), 8) == opt2 &&
+           rd32(p.data(), 10) == option;
+}
+
+// A second monster in view: a Poring at (98, 100), west of us, with some state of its own.
+void westPoring(Session& s, uint32_t now, uint32_t option = 0x4) {
+    Bytes mob(54, 0);
+    wr16(mob, 0, 0x0078);
+    wr32(mob, 2, 110000002);
+    wr16(mob, 12, uint16_t(option));
+    wr16(mob, 14, 1002);
+    encodePos3(mob, 46, Cell{98, 100}, 0);
+    s.onServerData(kMap, mob.data(), mob.size(), now);
+}
+
+PadState rightStick(float rx) {
+    PadState p;
+    p.connected = true;
+    p.rx = rx;
+    return p;
+}
+
+PadState press(uint16_t buttons) {
+    PadState p;
+    p.connected = true;
+    p.buttons = buttons;
+    return p;
+}
+
+}  // namespace
+
+TEST(session_sight_mark_stays_on_the_target) {
+    Config cfg;
+    cfg.mark = MarkStyle::Sight;
+    Session s{cfg};
+    connect(s);
+    s.tick(pressA(), kView, 100);  // the Poring at (102, 100) becomes the target
+    const std::vector<Bytes> p = toClient(s, 110);
+    CHECK_EQ(p.size(), 1u);  // its state with Sight's fireball, and no "!"
+    CHECK(p.size() == 1 && unitState(p[0], 110000001, 0, 0x0001));
+    s.tick(press(0), kView, 200);
+    CHECK(toClient(s, 210).empty());  // sent once: the client keeps drawing it
+}
+
+TEST(session_mark_moves_with_the_target_and_gives_the_old_one_its_state_back) {
+    Config cfg;
+    cfg.mark = MarkStyle::Ruwach;
+    Session s{cfg};
+    connect(s);
+    westPoring(s, 50);
+    s.tick(rightStick(1.0f), kView, 100);  // picks the Poring to the east
+    CHECK(toClient(s, 110).size() == 1);
+    s.tick(press(0), kView, 200);
+    s.tick(rightStick(-1.0f), kView, 300);  // now the one to the west
+    std::vector<Bytes> p = toClient(s, 310);
+    CHECK_EQ(p.size(), 2u);
+    CHECK(p.size() == 2 && unitState(p[0], 110000001, 0, 0));          // as the server showed it
+    CHECK(p.size() == 2 && unitState(p[1], 110000002, 0, 0x4 | 0x2000));  // its own state plus the light
+    s.tick(press(0), kView, 400);
+    s.tick(press(kPadR3), kView, 500);  // the target is cleared
+    p = toClient(s, 510);
+    CHECK(p.size() == 1 && unitState(p[0], 110000002, 0, 0x4));
+}
+
+TEST(session_mark_comes_back_after_the_server_redraws_the_target) {
+    Config cfg;
+    cfg.mark = MarkStyle::Sight;
+    Session s{cfg};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    toClient(s, 110);
+    Bytes poisoned(15, 0);  // the server's own state change for our target
+    wr16(poisoned, 0, 0x0229);
+    wr32(poisoned, 2, 110000001);
+    wr16(poisoned, 8, 0x1);
+    s.onServerData(kMap, poisoned.data(), poisoned.size(), 150);
+    s.tick(press(0), kView, 200);
+    const std::vector<Bytes> p = toClient(s, 210);
+    CHECK(p.size() == 1 && unitState(p[0], 110000001, 0x1, 0x0001));
+}
+
+TEST(session_poison_mark_tints_the_target) {
+    Config cfg;
+    cfg.mark = MarkStyle::Poison;
+    Session s{cfg};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    const std::vector<Bytes> p = toClient(s, 110);
+    CHECK(p.size() == 1 && unitState(p[0], 110000001, 0x1, 0));
+}
+
+TEST(session_mark_style_changed_from_the_menu) {
+    Config cfg;
+    cfg.mark = MarkStyle::Sight;
+    Session s{cfg};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    toClient(s, 110);
+    s.setMark(MarkStyle::Ruwach);
+    s.tick(press(0), kView, 200);
+    std::vector<Bytes> p = toClient(s, 210);
+    CHECK(p.size() == 1 && unitState(p[0], 110000001, 0, 0x2000));
+    s.setMark(MarkStyle::Off);
+    s.tick(press(0), kView, 300);
+    p = toClient(s, 310);
+    CHECK(p.size() == 1 && unitState(p[0], 110000001, 0, 0));
+}
+
+TEST(session_mark_leaves_a_monster_that_is_gone_alone) {
+    Config cfg;
+    cfg.mark = MarkStyle::Sight;
+    Session s{cfg};
+    connect(s);
+    s.tick(pressA(), kView, 100);
+    toClient(s, 110);
+    Bytes gone(7, 0);
+    wr16(gone, 0, 0x0080);
+    wr32(gone, 2, 110000001);
+    gone[6] = 1;  // died
+    s.onServerData(kMap, gone.data(), gone.size(), 150);
+    s.tick(press(0), kView, 200);
+    CHECK(toClient(s, 210).empty());  // nothing to give back: the client dropped it
 }
 
 TEST(session_mark_dropped_with_the_connection_or_a_desync) {

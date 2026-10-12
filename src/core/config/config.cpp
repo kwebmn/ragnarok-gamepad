@@ -55,6 +55,28 @@ void setIdList(const std::string& v, std::vector<uint16_t>& out) {
 
 }  // namespace
 
+std::optional<MarkStyle> parseMarkStyle(const std::string& token) {
+    std::string t = trim(token);
+    for (char& ch : t) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    if (t == "0" || t == "off" || t == "false") return MarkStyle::Off;
+    if (t == "1" || t == "on" || t == "true" || t == "gasp") return MarkStyle::Gasp;
+    if (t == "sight") return MarkStyle::Sight;
+    if (t == "ruwach") return MarkStyle::Ruwach;
+    if (t == "poison") return MarkStyle::Poison;
+    return std::nullopt;
+}
+
+const char* markStyleToken(MarkStyle style) {
+    switch (style) {
+        case MarkStyle::Off: return "off";
+        case MarkStyle::Sight: return "sight";
+        case MarkStyle::Ruwach: return "ruwach";
+        case MarkStyle::Poison: return "poison";
+        case MarkStyle::Gasp: break;
+    }
+    return "gasp";
+}
+
 std::optional<int> parseFKey(const std::string& token) {
     std::string t = trim(token);
     for (char& ch : t) ch = char(std::tolower(static_cast<unsigned char>(ch)));
@@ -118,7 +140,7 @@ Config parseConfig(const std::string& text) {
             int ms = 0;
             if (toInt(val, 0, 2000, ms)) c.repeatMs = ms == 0 ? 0 : std::max(ms, 150);
         } else if (key == "aim.mark") {
-            setBool(val, c.mark);
+            if (auto m = parseMarkStyle(val)) c.mark = *m;
         } else if (key == "rumble.enabled") {
             setBool(val, c.rumble);
         } else if (key == "general.language") {

@@ -195,7 +195,7 @@ TEST(menu_settings_change_reset_and_save) {
     m.change(settingRow(SettingRow::Mark), +1);
     m.update(padOf(0), 80);
     CHECK(m.update(padOf(kPadStart), 90) == SettingsMenu::Result::Save);
-    CHECK(!m.settings().mark);
+    CHECK(m.settings().mark == MarkStyle::Sight);
     CHECK(m.bindings() == defaultBindings());  // the Buttons tab saved as it was
 }
 

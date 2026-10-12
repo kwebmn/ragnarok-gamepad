@@ -44,6 +44,10 @@ enum class Text : uint16_t {
     Off,
     FocusStaysOut,
     FocusGoesIn,
+    MarkGasp,
+    MarkSight,
+    MarkRuwach,
+    MarkPoison,
     Count
 };
 

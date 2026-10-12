@@ -12,6 +12,11 @@ namespace {
 
 constexpr uint32_t kStaleMs = 500;
 constexpr uint32_t kMarkStaleMs = 1000;  // a late "!" could land on the wrong moment
+constexpr uint32_t kStateStaleMs = 10000;  // a unit's state is right whenever it arrives
+// The effects a persistent mark borrows (uAthena status.h).
+constexpr uint32_t kOptionSight = 0x0001;
+constexpr uint32_t kOptionRuwach = 0x2000;
+constexpr uint16_t kOpt2Poison = 0x0001;
 constexpr uint32_t kAfterStopLogMs = 1500;
 
 std::string hotkeyText(const Hotkey& k) {
@@ -54,6 +59,7 @@ void Session::onClientSent(SocketId s, const uint8_t* data, size_t n, uint32_t n
     injectOk_ = true;
     queue_.clear();
     toClient_.clear();
+    marked_ = 0;  // a new map server: the client starts from what that server shows
     Bytes first;
     first.swap(c.head);
     feedUp(c, first.data(), first.size(), nowMs);
@@ -113,7 +119,15 @@ void Session::onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t n
             if (it != profiles_.characters.end()) it->second.name = charName_;
         }
         world_.apply(*ev, nowMs);
-        if (std::holds_alternative<EvAuthOk>(*ev) || std::holds_alternative<EvMapChange>(*ev)) controller_.onMapLoaded();
+        if (std::holds_alternative<EvAuthOk>(*ev) || std::holds_alternative<EvMapChange>(*ev)) {
+            controller_.onMapLoaded();
+            marked_ = 0;  // a new map: the client knows nobody yet
+        }
+        if (marked_ != 0) {  // the server drew our marked monster anew, or it is gone from the client
+            if (const auto* a = std::get_if<EvActor>(&*ev); a && a->id == marked_) remark_ = true;
+            if (const auto* o = std::get_if<EvActorOption>(&*ev); o && o->id == marked_) remark_ = true;
+            if (const auto* v = std::get_if<EvVanish>(&*ev); v && v->id == marked_) marked_ = 0;
+        }
         if (const auto* bar = std::get_if<EvHotkeys>(&*ev)) {
             int filled = 0;
             for (const Hotkey& k : bar->keys) filled += k.id != 0;
@@ -130,6 +144,7 @@ void Session::onClosed(SocketId s) {
     injectOk_ = false;
     queue_.clear();
     toClient_.clear();
+    marked_ = 0;
     log_.push_back("map server connection closed");
 }
 
@@ -154,10 +169,11 @@ TickOutput Session::tick(const PadState& pad, const ViewInfo& view, uint32_t now
     if (padWalking_ && !controller_.walking()) walkStopMs_ = nowMs;
     padWalking_ = controller_.walking();
     std::vector<Bytes> requests = out.packets;
-    if (out.mark != 0 && mark_ && mapSocket_ != 0 && downOk_) {
-        toClient_.emplace_back(nowMs, buildEmotion(out.mark, kEmotionGasp));
-        requests.push_back(buildNameRequest(out.mark));  // the server answers at once and the "!" rides along
+    if (out.mark != 0 && mark_ != MarkStyle::Off && mapSocket_ != 0 && downOk_) {
+        if (mark_ == MarkStyle::Gasp) toClient_.emplace_back(nowMs + kMarkStaleMs, buildEmotion(out.mark, kEmotionGasp));
+        requests.push_back(buildNameRequest(out.mark));  // the server answers at once and the mark rides along
     }
+    updatePersistentMark(nowMs);
 
     if (requests.empty()) return out;
     if (mapSocket_ != 0 && downOk_ && injectOk_) {
@@ -188,8 +204,40 @@ std::vector<Bytes> Session::takeInjectable(uint32_t nowMs) {
     return ready;
 }
 
+void Session::setMark(MarkStyle style) {
+    if (style == mark_) return;
+    mark_ = style;
+    remark_ = marked_ != 0;  // the new style replaces the old effect, or puts the state back
+}
+
+void Session::updatePersistentMark(uint32_t nowMs) {
+    const bool persistent = mark_ == MarkStyle::Sight || mark_ == MarkStyle::Ruwach || mark_ == MarkStyle::Poison;
+    uint32_t want = persistent && mapSocket_ != 0 && downOk_ ? controller_.target() : 0;
+    const auto& actors = world_.actors();
+    if (want != 0 && actors.count(want) == 0) want = 0;
+    if (want == marked_ && !remark_) return;
+    if (marked_ != 0 && marked_ != want) {
+        auto it = actors.find(marked_);
+        if (it != actors.end())
+            toClient_.emplace_back(nowMs + kStateStaleMs,
+                                   buildUnitState(marked_, it->second.opt1, it->second.opt2, it->second.option));
+    }
+    if (want != 0) {
+        const Actor& a = actors.at(want);
+        uint16_t opt2 = a.opt2;
+        uint32_t option = a.option;
+        if (mark_ == MarkStyle::Sight) option |= kOptionSight;
+        if (mark_ == MarkStyle::Ruwach) option |= kOptionRuwach;
+        if (mark_ == MarkStyle::Poison) opt2 |= kOpt2Poison;
+        toClient_.emplace_back(nowMs + kStateStaleMs, buildUnitState(want, a.opt1, opt2, option));
+    }
+    marked_ = want;
+    remark_ = false;
+}
+
 size_t Session::appendForClient(SocketId s, uint8_t* buf, size_t n, size_t cap, uint32_t nowMs) {
-    while (!toClient_.empty() && nowMs - toClient_.front().first > kMarkStaleMs) toClient_.pop_front();
+    for (auto it = toClient_.begin(); it != toClient_.end();)  // late is wrong for a "!", fine for a state
+        it = int32_t(nowMs - it->first) > 0 ? toClient_.erase(it) : it + 1;
     if (toClient_.empty() || s == 0 || s != mapSocket_ || !downOk_ || n > cap) return 0;
     auto it = conns_.find(s);
     if (it == conns_.end() || !it->second.down || !it->second.down->atBoundary()) return 0;

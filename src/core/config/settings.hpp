@@ -18,7 +18,7 @@ struct Settings {
     bool borderless = false;
     bool saveCpu = true;
     bool rumble = true;
-    bool mark = true;
+    MarkStyle mark = MarkStyle::Gasp;
     bool operator==(const Settings& o) const {
         return lang == o.lang && lock == o.lock && focusClick == o.focusClick && mouseKeys == o.mouseKeys &&
                borderless == o.borderless && saveCpu == o.saveCpu && rumble == o.rumble && mark == o.mark;

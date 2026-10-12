@@ -61,6 +61,62 @@ TEST(s2c_monster_walking_into_view_0x007b) {  // uAthena clif_set007b for a non-
     CHECK(a && a->from == (Cell{30, 40}) && a->to == (Cell{35, 44}));
 }
 
+TEST(s2c_unit_state_is_read_from_every_spawn_packet) {
+    Bytes idle = pkt(0x0078, 54);
+    wr32(idle, 2, 110000600);
+    wr16(idle, 8, 3);       // opt1
+    wr16(idle, 10, 0x10);   // opt2
+    wr16(idle, 12, 0x4);    // option
+    wr16(idle, 14, 1002);
+    auto e1 = parseS2C(idle);
+    auto* a = as<EvActor>(e1);
+    CHECK(a && a->opt1 == 3 && a->opt2 == 0x10 && a->option == 0x4);
+    Bytes walk = pkt(0x022c, 65);
+    wr32(walk, 2, 110000601);
+    wr16(walk, 8, 1);
+    wr16(walk, 10, 2);
+    wr32(walk, 12, 0x2000);  // a 4-byte option in the PACKETVER 7 packet
+    wr16(walk, 16, 1113);
+    auto e2 = parseS2C(walk);
+    auto* w = as<EvActor>(e2);
+    CHECK(w && w->opt1 == 1 && w->opt2 == 2 && w->option == 0x2000u);
+    Bytes spawn = pkt(0x007c, 41);
+    wr32(spawn, 2, 110000602);
+    wr16(spawn, 12, 0x8);
+    wr16(spawn, 20, 1002);
+    auto e3 = parseS2C(spawn);
+    auto* sp = as<EvActor>(e3);
+    CHECK(sp && sp->option == 0x8);
+}
+
+TEST(s2c_unit_state_change) {
+    Bytes p = pkt(0x0229, 15);  // clif_changeoption, PACKETVER 7
+    wr32(p, 2, 110000600);
+    wr16(p, 6, 0);
+    wr16(p, 8, 0x1);
+    wr32(p, 10, 0x40);
+    auto e = parseS2C(p);
+    auto* o = as<EvActorOption>(e);
+    CHECK(o && o->id == 110000600u && o->opt1 == 0 && o->opt2 == 1 && o->option == 0x40u);
+    Bytes old = pkt(0x0119, 13);  // the older packet, still understood
+    wr32(old, 2, 110000601);
+    wr16(old, 10, 0x2);
+    auto e2 = parseS2C(old);
+    auto* o2 = as<EvActorOption>(e2);
+    CHECK(o2 && o2->id == 110000601u && o2->option == 0x2u);
+}
+
+TEST(s2c_build_unit_state_for_the_client) {
+    const Bytes b = buildUnitState(110000123, 1, 2, 0x2001);
+    CHECK_EQ(b.size(), size_t(s2cLength(0x0229)));
+    CHECK_EQ(rd16(b.data(), 0), 0x0229);
+    CHECK_EQ(rd32(b.data(), 2), 110000123u);
+    CHECK_EQ(rd16(b.data(), 6), 1);
+    CHECK_EQ(rd16(b.data(), 8), 2);
+    CHECK_EQ(rd32(b.data(), 10), 0x2001u);
+    CHECK_EQ(b[14], 0);
+}
+
 TEST(s2c_monster_packets) {
     Bytes idle = pkt(0x0078, 54);
     wr32(idle, 2, 110000500);

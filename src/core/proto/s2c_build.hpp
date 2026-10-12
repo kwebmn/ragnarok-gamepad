@@ -9,5 +9,7 @@ namespace uapad {
 constexpr uint8_t kEmotionGasp = 0;  // "!"
 
 Bytes buildEmotion(uint32_t actor, uint8_t type);  // 0x00c0: an emotion bubble over `actor`
+// 0x0229: `actor`'s state (opt1, opt2, option) as the client should draw it.
+Bytes buildUnitState(uint32_t actor, uint16_t opt1, uint16_t opt2, uint32_t option);
 
 }  // namespace uapad

@@ -42,23 +42,29 @@ std::optional<Event> parseS2C(const Bytes& p) {
         case 0x0078: {
             if (n < 54) break;
             const Cell c = decodePos3(d, 46);
-            return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), c, c};
+            return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), c, c, rd16(d, 8), rd16(d, 10), rd16(d, 12)};
         }
         case 0x007b: {  // a non-player walking into view on PACKETVER < 7 (this server sends 0x022c instead)
             if (n < 60) break;
             const Move m = decodePos6(d, 50);
-            return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), m.from, m.to};
+            return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), m.from, m.to, rd16(d, 8), rd16(d, 10), rd16(d, 12)};
         }
         case 0x007c: {
             if (n < 41) break;
             const Cell c = decodePos3(d, 36);
-            return EvActor{rd32(d, 2), rd16(d, 20), rd16(d, 14), rd16(d, 6), c, c};
+            return EvActor{rd32(d, 2), rd16(d, 20), rd16(d, 14), rd16(d, 6), c, c, rd16(d, 8), rd16(d, 10), rd16(d, 12)};
         }
         case 0x022c: {
             if (n < 64) break;
             const Move m = decodePos6(d, 54);
-            return EvActor{rd32(d, 2), rd16(d, 16), rd16(d, 18), rd16(d, 6), m.from, m.to};
+            return EvActor{rd32(d, 2), rd16(d, 16), rd16(d, 18), rd16(d, 6), m.from, m.to, rd16(d, 8), rd16(d, 10), rd32(d, 12)};
         }
+        case 0x0119:  // clif_changeoption before PACKETVER 7
+            if (n < 13) break;
+            return EvActorOption{rd32(d, 2), rd16(d, 6), rd16(d, 8), rd16(d, 10)};
+        case 0x0229:  // clif_changeoption
+            if (n < 15) break;
+            return EvActorOption{rd32(d, 2), rd16(d, 6), rd16(d, 8), rd32(d, 10)};
         case 0x0086: {
             if (n < 16) break;
             const Move m = decodePos6(d, 6);

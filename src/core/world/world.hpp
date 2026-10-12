@@ -17,6 +17,9 @@ struct Actor {
     Cell from;
     Cell to;
     uint32_t moveStartMs = 0;
+    uint16_t opt1 = 0;  // its state as the server last showed it (the pad's own target mark aside)
+    uint16_t opt2 = 0;
+    uint32_t option = 0;
 };
 
 struct GroundItem {

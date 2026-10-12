@@ -158,12 +158,21 @@ void WorldState::apply(const Event& ev, uint32_t nowMs) {
                 a.from = e.from;
                 a.to = e.to;
                 a.moveStartMs = nowMs;
+                a.opt1 = e.opt1;
+                a.opt2 = e.opt2;
+                a.option = e.option;
                 actors_[e.id] = a;
             } else if constexpr (std::is_same_v<T, EvActorMove>) {
                 if (auto it = actors_.find(e.id); it != actors_.end()) {
                     it->second.from = e.from;
                     it->second.to = e.to;
                     it->second.moveStartMs = nowMs;
+                }
+            } else if constexpr (std::is_same_v<T, EvActorOption>) {
+                if (auto it = actors_.find(e.id); it != actors_.end()) {
+                    it->second.opt1 = e.opt1;
+                    it->second.opt2 = e.opt2;
+                    it->second.option = e.option;
                 }
             } else if constexpr (std::is_same_v<T, EvPetInfo>) {
                 if (e.type == 0) ownPet_ = e.id;

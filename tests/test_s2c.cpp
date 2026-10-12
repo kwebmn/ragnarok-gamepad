@@ -1,3 +1,5 @@
+#include "core/proto/packet_tables.hpp"
+#include "core/proto/s2c_build.hpp"
 #include "core/proto/s2c_parser.hpp"
 #include "test.hpp"
 
@@ -250,4 +252,12 @@ TEST(s2c_self_speed_status) {
     wr32(hp, 4, 300);
     CHECK(!parseS2C(hp).has_value());
     CHECK(!parseS2C(pkt(0x00b0, 8)).has_value());  // speed 0 is not a real value
+}
+
+TEST(s2c_build_emotion) {
+    Bytes e = buildEmotion(110000123, kEmotionGasp);
+    CHECK_EQ(int(e.size()), s2cLength(0x00c0));
+    CHECK_EQ(rd16(e.data(), 0), 0x00c0);
+    CHECK_EQ(rd32(e.data(), 2), 110000123u);
+    CHECK_EQ(e[6], 0);
 }

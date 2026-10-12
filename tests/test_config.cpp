@@ -63,3 +63,18 @@ TEST(config_mouse_freedom) {
     CHECK(!parseConfig("[mouse]\nfreedom = 0\n").mouseFreedom);
     CHECK(parseConfig("[mouse]\nfreedom = 1\n").mouseFreedom);
 }
+
+TEST(config_v2_keys) {
+    Config d = parseConfig("");
+    CHECK_EQ(d.repeatMs, 250);
+    CHECK(d.traps == (std::vector<uint16_t>{115, 116, 117, 118, 119, 120, 121, 122, 123, 125}));
+    CHECK(d.mark);
+    Config c = parseConfig("[skills]\nrepeat_ms = 400\ntraps = 117, 123\n[aim]\nmark = 0\n");
+    CHECK_EQ(c.repeatMs, 400);
+    CHECK(c.traps == (std::vector<uint16_t>{117, 123}));
+    CHECK(!c.mark);
+    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 0\n").repeatMs, 0);    // no repeat
+    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 30\n").repeatMs, 100);  // faster than 100 ms is clamped
+    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = 9000\n").repeatMs, 250);
+    CHECK_EQ(parseConfig("[skills]\nrepeat_ms = -5\n").repeatMs, 250);
+}

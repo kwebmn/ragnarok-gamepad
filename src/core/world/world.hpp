@@ -37,6 +37,8 @@ public:
     bool inGame() const { return inGame_; }
     Cell selfPos(uint32_t nowMs) const;
     bool sitting() const { return sitting_; }
+    // Our last step on this map as a vector (destination - start), nothing before the first one.
+    std::optional<Cell> lastMove() const { return lastMove_; }
     bool dead() const { return dead_; }
 
     const std::unordered_map<uint32_t, Actor>& actors() const { return actors_; }
@@ -61,6 +63,7 @@ private:
     Cell selfTo_;
     uint32_t selfMoveStartMs_ = 0;
     uint16_t selfSpeed_ = 150;  // ms per cell, from 0x00b0 SP_SPEED
+    std::optional<Cell> lastMove_;
     bool sitting_ = false;
     bool dead_ = false;
     uint32_t ownPet_ = 0;

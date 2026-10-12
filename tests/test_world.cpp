@@ -132,3 +132,14 @@ TEST(world_self_speed_changes_interpolation) {
     CHECK(w.selfPos(1300) == (Cell{103, 100}));  // no jump at the change
     CHECK(w.selfPos(1500) == (Cell{107, 100}));  // 4 more cells in 200 ms
 }
+
+TEST(world_last_move) {
+    WorldState w = inGame();
+    CHECK(!w.lastMove());
+    w.apply(EvSelfWalk{Cell{100, 100}, Cell{97, 104}}, 1000);
+    CHECK(w.lastMove() && *w.lastMove() == (Cell{-3, 4}));
+    w.apply(EvSelfWalk{Cell{97, 104}, Cell{97, 104}}, 2000);  // a walk to where we stand keeps the last step
+    CHECK(w.lastMove() && *w.lastMove() == (Cell{-3, 4}));
+    w.apply(EvMapChange{"prontera", Cell{150, 150}}, 3000);
+    CHECK(!w.lastMove());
+}

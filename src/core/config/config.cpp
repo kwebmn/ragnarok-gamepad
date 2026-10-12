@@ -1,5 +1,6 @@
 #include "core/config/config.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <sstream>
 
@@ -90,6 +91,13 @@ Config parseConfig(const std::string& text) {
             toInt(val, 100, 5000, c.attackIntervalMs);
         } else if (key == "skills.ground_self") {
             setIdList(val, c.groundSelf);
+        } else if (key == "skills.traps") {
+            setIdList(val, c.traps);
+        } else if (key == "skills.repeat_ms") {
+            int ms = 0;
+            if (toInt(val, 0, 2000, ms)) c.repeatMs = ms == 0 ? 0 : std::max(ms, 100);
+        } else if (key == "aim.mark") {
+            setBool(val, c.mark);
         } else if (key == "rumble.enabled") {
             setBool(val, c.rumble);
         }

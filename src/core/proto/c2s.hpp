@@ -15,6 +15,8 @@ Bytes buildSkillToId(uint16_t skill, uint16_t lv, uint32_t target);  // 0x0072 u
 Bytes buildSkillToPos(uint16_t skill, uint16_t lv, Cell at);         // 0x0113 useskilltopos
 Bytes buildTakeItem(uint32_t floorId);                               // 0x00f5 takeitem
 Bytes buildUseItem(uint16_t index, uint32_t accountId);              // 0x009f useitem
+Bytes buildNameRequest(uint32_t actor);                              // 0x008c getcharnamerequest
+Bytes buildStopAttack();                                             // 0x0118 stopattack
 
 struct Hotkey {
     uint8_t type = 0;  // 0 item, 1 skill

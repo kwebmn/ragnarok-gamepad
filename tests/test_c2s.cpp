@@ -1,4 +1,5 @@
 #include "core/proto/c2s.hpp"
+#include "core/proto/packet_tables.hpp"
 #include "test.hpp"
 
 using namespace uapad;
@@ -79,4 +80,14 @@ TEST(c2s_parse_hotkey_change) {
     CHECK(c.has_value());
     CHECK(c && c->index == 9);
     CHECK(c && c->key == (Hotkey{1, 28, 10}));
+}
+
+TEST(c2s_name_request_and_stop_attack) {
+    Bytes n = buildNameRequest(110000123);
+    CHECK_EQ(int(n.size()), c2sLength(0x008c));
+    CHECK_EQ(rd16(n.data(), 0), 0x008c);
+    CHECK_EQ(rd32(n.data(), 7), 110000123u);
+    Bytes s = buildStopAttack();
+    CHECK_EQ(int(s.size()), c2sLength(0x0118));
+    CHECK_EQ(rd16(s.data(), 0), 0x0118);
 }

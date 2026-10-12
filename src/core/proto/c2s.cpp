@@ -51,6 +51,19 @@ Bytes buildUseItem(uint16_t index, uint32_t accountId) {
     return b;
 }
 
+Bytes buildNameRequest(uint32_t actor) {
+    Bytes b(11, 0);
+    wr16(b, 0, 0x008c);
+    wr32(b, 7, actor);
+    return b;
+}
+
+Bytes buildStopAttack() {
+    Bytes b(2, 0);
+    wr16(b, 0, 0x0118);
+    return b;
+}
+
 std::optional<uint32_t> parseWantToConnection(const Bytes& p) {
     if (p.size() < 26 || rd16(p.data(), 0) != 0x009b) return std::nullopt;
     return rd32(p.data(), 4);

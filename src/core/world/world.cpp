@@ -17,6 +17,7 @@ void WorldState::clearMap() {
     actors_.clear();
     lastHit_.clear();
     items_.clear();
+    lastMove_.reset();
     sitting_ = false;
     dead_ = false;
 }
@@ -88,6 +89,7 @@ void WorldState::apply(const Event& ev, uint32_t nowMs) {
                 inGame_ = true;
                 selfFrom_ = selfTo_ = e.pos;
             } else if constexpr (std::is_same_v<T, EvSelfWalk>) {
+                if (!(e.to == e.from)) lastMove_ = Cell{e.to.x - e.from.x, e.to.y - e.from.y};
                 selfFrom_ = e.from;
                 selfTo_ = e.to;
                 selfMoveStartMs_ = nowMs;

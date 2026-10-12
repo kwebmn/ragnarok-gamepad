@@ -21,6 +21,10 @@ struct Config {
     float blacklistSeconds = 10.0f;
     int attackIntervalMs = 300;
     std::vector<uint16_t> groundSelf = {12, 25, 27, 70};  // Safety Wall, Pneuma, Warp Portal, Sanctuary
+    // Hunter traps: the server refuses a trap with any character (us included) within 1 cell of it.
+    std::vector<uint16_t> traps = {115, 116, 117, 118, 119, 120, 121, 122, 123, 125};
+    int repeatMs = 250;  // a held slot button fires again this often; 0 = once per press
+    bool mark = true;    // "!" over a newly chosen target (shown to the client only)
     bool rumble = true;
 };
 

@@ -7,7 +7,7 @@ Languages: English (this file), [українська](README.uk.md), [русс�
 ## Install
 
 1. Close the client.
-2. Copy `dinput.dll` and `uaro-pad.ini` into the client folder, next to `uaRO.exe`. If a `dinput.dll` is already there (ROExt), replace it: the module does what ROExt did for the mouse and the window (see below).
+2. Copy `dinput.dll` and `uaro-pad.ini` into the client folder, next to `uaRO.exe`. If a `dinput.dll` is already there (ROExt), replace it. The module takes over ROExt's mouse freedom and, as options, its borderless window and CPU saving; ROExt's other options (a fixed window size, the code page, Alt+F4) are not in the module.
 3. Plug in an Xbox gamepad (or any gamepad Windows sees as XInput) and start the client.
 
 ## Remove
@@ -35,7 +35,7 @@ A held slot button (and LT) repeats 4 times a second (`repeat_ms` in `uaro-pad.i
 
 The attack stops when you walk with the left stick, press R3 or click with the real mouse; press A again afterwards (or hold A: the attack then goes on by itself as soon as you stop).
 
-"Nearest" means nearest in a straight line, the way you see it on the screen. A target that is more than 15 cells away (you walked off, or it ran) is dropped, so the next A goes for the nearest monster. A hunter shooting from 9 cells keeps the target.
+"Nearest" means nearest in a straight line, the way you see it on the screen, and no further than 15 cells — about the edge of the screen (the server shows the client monsters much further away). A target that gets more than 15 cells away (you walked off, or it ran) is dropped, so the next A goes for the nearest monster. A hunter shooting from 9 cells keeps the target.
 
 Skills and items go onto the hotkey bar as usual, with the mouse. By default the buttons use the first row (F1–F9); the second and the third rows can be assigned in the Start menu. The module reads the bar from the client itself, nothing needs to be dragged again; what it saw is in the log, line `hotkey bar from the client`. The module casts a slot's skill on the target by itself — no need to pick the monster with the mouse as you would after pressing F1 on the keyboard.
 
@@ -97,7 +97,7 @@ Settings work right after "Save" and are written into `uaro-pad.ini` — only th
 
 The client normally captures the mouse; the module leaves it free (Mouse Freedom), and the game cursor follows the Windows cursor:
 
-- With `uaRO.exe` the module reads where the game's own cursor is, so the two cursors always match — also when the picture is stretched (dgVoodoo, full screen in another resolution).
+- With `uaRO.exe` the module reads where the game's own cursor is, so the two cursors match — also when the picture is stretched over a bigger window or screen. If the picture keeps black bars at the sides (dgVoodoo with `KeepWindowAspectRatio`), the cursor can be off; send the log.
 - Clicks and the wheel reach the game only over its window. Scrolling a browser on another monitor no longer zooms the camera, and a click on the title bar no longer sends the character walking. A drag started in the game goes on until you let go, wherever the cursor is.
 - Over the title bar and the borders you see the normal Windows cursors (the client used to hide them).
 

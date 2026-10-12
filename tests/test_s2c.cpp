@@ -49,7 +49,7 @@ TEST(s2c_self_position_packets) {
     CHECK(sp && sp->id == 2000001u && sp->pos == (Cell{40, 41}));
 }
 
-TEST(s2c_monster_walking_into_view_0x007b) {  // uAthena clif_set007b for anything but a player
+TEST(s2c_monster_walking_into_view_0x007b) {  // uAthena clif_set007b for a non-player, PACKETVER < 7
     Bytes p = pkt(0x007b, 60);
     wr32(p, 2, 110000503);
     wr16(p, 6, 300);

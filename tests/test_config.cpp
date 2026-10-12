@@ -57,3 +57,9 @@ TEST(config_empty_ground_self_list_is_allowed) {
     Config c = parseConfig("[skills]\nground_self =\n");
     CHECK(c.groundSelf.empty());
 }
+
+TEST(config_mouse_freedom) {
+    CHECK(parseConfig("").mouseFreedom);  // on by default: the uaRO client hides the cursor without it
+    CHECK(!parseConfig("[mouse]\nfreedom = 0\n").mouseFreedom);
+    CHECK(parseConfig("[mouse]\nfreedom = 1\n").mouseFreedom);
+}

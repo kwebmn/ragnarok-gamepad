@@ -80,6 +80,8 @@ Config parseConfig(const std::string& text) {
         } else if (key == "mouse.buttons") {
             if (val == "dinput") c.buttons = ButtonChannel::DirectInput;
             if (val == "messages") c.buttons = ButtonChannel::Messages;
+        } else if (key == "mouse.freedom") {
+            setBool(val, c.mouseFreedom);
         } else if (key == "target.give_up_seconds") {
             setFloat(val, 1.0f, 60.0f, c.giveUpSeconds);
         } else if (key == "target.blacklist_seconds") {

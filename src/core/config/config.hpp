@@ -16,6 +16,7 @@ struct Config {
     float walkRadius = 0.22f;  // fraction of the shorter side of the client area
     PressMode press = PressMode::Ring;
     ButtonChannel buttons = ButtonChannel::DirectInput;
+    bool mouseFreedom = true;  // non-exclusive DirectInput mouse; the game cursor follows the Windows cursor
     float giveUpSeconds = 4.0f;
     float blacklistSeconds = 10.0f;
     int attackIntervalMs = 300;

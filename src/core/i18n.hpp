@@ -48,6 +48,11 @@ enum class Text : uint16_t {
     MarkSight,
     MarkRuwach,
     MarkPoison,
+    MarkDeadlyPoison,
+    MarkCurse,
+    MarkStun,
+    MarkSleep,
+    MarkSilence,
     Count
 };
 

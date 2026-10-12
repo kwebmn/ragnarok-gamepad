@@ -13,11 +13,11 @@ enum class LogLevel { Error = 0, Info = 1, Debug = 2 };
 enum class PressMode { Ring, Center };              // where the virtual LMB goes down when walking starts
 enum class ButtonChannel { DirectInput, Messages };  // how the virtual LMB reaches the client
 
-// [aim] mark: how the target shows on the client (only ours). Gasp: a "!" when it is chosen. Sight, Ruwach,
-// Poison: an effect the client draws on it for as long as it is the target (Sight's fireball, Ruwach's light,
-// the green of poison).
-enum class MarkStyle : uint8_t { Off, Gasp, Sight, Ruwach, Poison };
-constexpr int kMarkStyles = 5;
+// [aim] mark: how the target shows on the client (only ours), in the menu's order. Gasp: a "!" when it is chosen.
+// The others: a state the client draws on the target for as long as it is the target — the tint of poison,
+// deadly poison or curse, the stars of stun, sleep's zzz, silence's sign, Sight's fireball, Ruwach's light.
+enum class MarkStyle : uint8_t { Poison, DeadlyPoison, Curse, Stun, Sleep, Silence, Sight, Ruwach, Gasp, Off };
+constexpr int kMarkStyles = 10;
 std::optional<MarkStyle> parseMarkStyle(const std::string& token);  // also the 0.3 values 0 and 1
 const char* markStyleToken(MarkStyle style);
 
@@ -44,7 +44,7 @@ struct Config {
     // Hunter traps: the server refuses a trap with any character (us included) within 1 cell of it.
     std::vector<uint16_t> traps = {115, 116, 117, 118, 119, 120, 121, 122, 123, 125};
     int repeatMs = 250;  // a held slot button fires again this often; 0 = once per press
-    MarkStyle mark = MarkStyle::Gasp;
+    MarkStyle mark = MarkStyle::Poison;
     bool rumble = true;
     Lang lang = Lang::En;
     bool mouseLock = false;                    // the cursor stays inside the game window while it is active

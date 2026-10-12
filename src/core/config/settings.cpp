@@ -11,13 +11,18 @@ const char* onOff(bool v) { return v ? "1" : "0"; }
 
 std::string markText(MarkStyle style, Lang lang) {
     switch (style) {
-        case MarkStyle::Off: return tr(lang, Text::Off);
+        case MarkStyle::Poison: return tr(lang, Text::MarkPoison);
+        case MarkStyle::DeadlyPoison: return tr(lang, Text::MarkDeadlyPoison);
+        case MarkStyle::Curse: return tr(lang, Text::MarkCurse);
+        case MarkStyle::Stun: return tr(lang, Text::MarkStun);
+        case MarkStyle::Sleep: return tr(lang, Text::MarkSleep);
+        case MarkStyle::Silence: return tr(lang, Text::MarkSilence);
         case MarkStyle::Sight: return tr(lang, Text::MarkSight);
         case MarkStyle::Ruwach: return tr(lang, Text::MarkRuwach);
-        case MarkStyle::Poison: return tr(lang, Text::MarkPoison);
-        case MarkStyle::Gasp: break;
+        case MarkStyle::Gasp: return tr(lang, Text::MarkGasp);
+        case MarkStyle::Off: break;
     }
-    return tr(lang, Text::MarkGasp);
+    return tr(lang, Text::Off);
 }
 
 int mouseKeyIndex(SettingRow row) { return row == SettingRow::Middle ? 0 : row == SettingRow::Button4 ? 1 : 2; }

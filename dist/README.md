@@ -89,7 +89,7 @@ Each character has a layout of its own: the module recognises the character when
 | Borderless window | no title bar and borders; position in `[window] position` | `[window] borderless` |
 | Save CPU in the background | while the game is behind other windows it does not keep a whole CPU core busy | `[window] background_sleep_ms` |
 | Vibration | the gamepad's rumble | `[rumble] enabled` |
-| Target mark | how the target shows (only you see it): "!" when it is chosen, or for as long as it is the target a fireball circling it (Sight), a light circling it (Ruwach) or a green tint; or nothing | `[aim] mark` |
+| Target mark | how the target shows for as long as it is the target (only you see it): poison's tint (the default), deadly poison, curse (red), stun (stars), sleep (zzz), silence, Sight's fireball or Ruwach's light — states the client draws, some with their own short sound; or "!" once when it is chosen; or nothing | `[aim] mark` |
 
 Settings work right after "Save" and are written into `uaro-pad.ini` — only the changed keys; comments and everything else in the file stay as they were.
 

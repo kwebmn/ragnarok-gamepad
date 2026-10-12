@@ -48,7 +48,12 @@ const Entry kTexts[] = {
     {"\"!\" when chosen", "«!» при виборі", "«!» при выборе"},
     {"fireball (Sight)", "вогник (Sight)", "огонёк (Sight)"},
     {"light (Ruwach)", "світло (Ruwach)", "свет (Ruwach)"},
-    {"green tint", "зелений відтінок", "зелёный оттенок"},
+    {"poison", "отрута", "яд"},
+    {"deadly poison", "смертельна отрута", "смертельный яд"},
+    {"curse (red)", "прокляття (червоний)", "проклятие (красный)"},
+    {"stun (stars)", "оглушення (зірочки)", "оглушение (звёздочки)"},
+    {"sleep (zzz)", "сон (zzz)", "сон (zzz)"},
+    {"silence", "мовчання", "молчание"},
 };
 static_assert(sizeof(kTexts) / sizeof(kTexts[0]) == size_t(Text::Count), "every Text needs its translations");
 

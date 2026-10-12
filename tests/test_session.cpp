@@ -211,7 +211,9 @@ TEST(session_unobserved_server_data_stops_parsing) {
 }
 
 TEST(session_mark_rides_along_with_the_server_reply) {
-    Session s{Config{}};
+    Config cfg;
+    cfg.mark = MarkStyle::Gasp;  // the "!"
+    Session s{cfg};
     connect(s);
     TickOutput o = s.tick(pressA(), kView, 100);  // the Poring becomes the target
     CHECK_EQ(o.mark, 110000001u);
@@ -230,7 +232,9 @@ TEST(session_mark_rides_along_with_the_server_reply) {
 }
 
 TEST(session_mark_waits_for_a_packet_boundary_and_room) {
-    Session s{Config{}};
+    Config cfg;
+    cfg.mark = MarkStyle::Gasp;  // the "!"
+    Session s{cfg};
     connect(s);
     s.tick(pressA(), kView, 100);
     const Bytes reply = nameReply(110000001);
@@ -244,7 +248,9 @@ TEST(session_mark_waits_for_a_packet_boundary_and_room) {
 }
 
 TEST(session_mark_only_on_the_map_socket_and_only_while_fresh) {
-    Session s{Config{}};
+    Config cfg;
+    cfg.mark = MarkStyle::Gasp;  // the "!"
+    Session s{cfg};
     connect(s);
     s.tick(pressA(), kView, 100);
     uint8_t buf[64] = {0};
@@ -382,6 +388,27 @@ TEST(session_poison_mark_tints_the_target) {
     s.tick(pressA(), kView, 100);
     const std::vector<Bytes> p = toClient(s, 110);
     CHECK(p.size() == 1 && unitState(p[0], 110000001, 0x1, 0));
+}
+
+TEST(session_mark_styles_borrow_these_states) {
+    struct Case {
+        MarkStyle style;
+        uint16_t opt1;
+        uint16_t opt2;
+        uint32_t option;
+    };
+    const Case cases[] = {{MarkStyle::DeadlyPoison, 0, 0x80, 0}, {MarkStyle::Curse, 0, 0x02, 0},
+                          {MarkStyle::Silence, 0, 0x04, 0},      {MarkStyle::Stun, 3, 0, 0},
+                          {MarkStyle::Sleep, 4, 0, 0},           {MarkStyle::Ruwach, 0, 0, 0x2000}};
+    for (const Case& c : cases) {
+        Config cfg;
+        cfg.mark = c.style;
+        Session s{cfg};
+        connect(s);
+        s.tick(pressA(), kView, 100);
+        const std::vector<Bytes> p = toClient(s, 110);
+        CHECK(p.size() == 1 && rd16(p[0].data(), 6) == c.opt1 && unitState(p[0], 110000001, c.opt2, c.option));
+    }
 }
 
 TEST(session_mark_style_changed_from_the_menu) {

@@ -59,22 +59,26 @@ std::optional<MarkStyle> parseMarkStyle(const std::string& token) {
     std::string t = trim(token);
     for (char& ch : t) ch = char(std::tolower(static_cast<unsigned char>(ch)));
     if (t == "0" || t == "off" || t == "false") return MarkStyle::Off;
-    if (t == "1" || t == "on" || t == "true" || t == "gasp") return MarkStyle::Gasp;
-    if (t == "sight") return MarkStyle::Sight;
-    if (t == "ruwach") return MarkStyle::Ruwach;
-    if (t == "poison") return MarkStyle::Poison;
+    if (t == "1" || t == "on" || t == "true") return Config{}.mark;
+    for (int i = 0; i < kMarkStyles; ++i)
+        if (t == markStyleToken(MarkStyle(i))) return MarkStyle(i);
     return std::nullopt;
 }
 
 const char* markStyleToken(MarkStyle style) {
     switch (style) {
-        case MarkStyle::Off: return "off";
+        case MarkStyle::Poison: return "poison";
+        case MarkStyle::DeadlyPoison: return "dpoison";
+        case MarkStyle::Curse: return "curse";
+        case MarkStyle::Stun: return "stun";
+        case MarkStyle::Sleep: return "sleep";
+        case MarkStyle::Silence: return "silence";
         case MarkStyle::Sight: return "sight";
         case MarkStyle::Ruwach: return "ruwach";
-        case MarkStyle::Poison: return "poison";
-        case MarkStyle::Gasp: break;
+        case MarkStyle::Gasp: return "gasp";
+        case MarkStyle::Off: break;
     }
-    return "gasp";
+    return "off";
 }
 
 std::optional<int> parseFKey(const std::string& token) {

@@ -9,7 +9,7 @@ TEST(settings_from_config) {
     const Settings d = settingsFrom(Config{});
     CHECK(d == defaultSettings());
     CHECK(d.lang == Lang::En && !d.lock && !d.focusClick && d.mouseKeys == (std::array<int, 3>{0, 0, 0}));
-    CHECK(!d.borderless && d.saveCpu && d.rumble && d.mark == MarkStyle::Gasp);
+    CHECK(!d.borderless && d.saveCpu && d.rumble && d.mark == MarkStyle::Poison);
     Config c;
     c.lang = Lang::Ru;
     c.mouseKeys = {2, 0, 9};
@@ -94,7 +94,7 @@ TEST(settings_round_trip_through_the_file) {
     s.borderless = true;
     s.saveCpu = false;
     s.rumble = false;
-    s.mark = MarkStyle::Poison;
+    s.mark = MarkStyle::Curse;
     const Config c = parseConfig(applyIniEdits("", settingsEdits(defaultSettings(), s, 10)));
     CHECK(settingsFrom(c) == s);
     Config applied;
@@ -106,21 +106,21 @@ TEST(settings_round_trip_through_the_file) {
 }
 
 TEST(settings_target_mark_goes_round) {
-    Settings s = defaultSettings();  // "!" when chosen
-    CHECK(settingLabel(SettingRow::Mark, Lang::Ru) == "Метка цели");
-    CHECK(settingValue(s, SettingRow::Mark, Lang::En) == "\"!\" when chosen");
-    s = changeSetting(s, SettingRow::Mark, +1);
-    CHECK(s.mark == MarkStyle::Sight);
-    CHECK(settingValue(s, SettingRow::Mark, Lang::Uk) == "вогник (Sight)");
-    s = changeSetting(s, SettingRow::Mark, +1);
-    CHECK(s.mark == MarkStyle::Ruwach);
-    s = changeSetting(s, SettingRow::Mark, +1);
+    Settings s = defaultSettings();  // the poison tint first: it shows best
     CHECK(s.mark == MarkStyle::Poison);
-    CHECK(settingValue(s, SettingRow::Mark, Lang::Ru) == "зелёный оттенок");
-    s = changeSetting(s, SettingRow::Mark, +1);
-    CHECK(s.mark == MarkStyle::Off);
-    CHECK(settingValue(s, SettingRow::Mark, Lang::En) == "off");
-    CHECK(changeSetting(s, SettingRow::Mark, -1).mark == MarkStyle::Poison);
+    CHECK(settingLabel(SettingRow::Mark, Lang::Ru) == "Метка цели");
+    CHECK(settingValue(s, SettingRow::Mark, Lang::Ru) == "яд");
+    const MarkStyle ring[] = {MarkStyle::DeadlyPoison, MarkStyle::Curse, MarkStyle::Stun, MarkStyle::Sleep,
+                              MarkStyle::Silence, MarkStyle::Sight, MarkStyle::Ruwach, MarkStyle::Gasp,
+                              MarkStyle::Off, MarkStyle::Poison};
+    for (MarkStyle next : ring) {
+        s = changeSetting(s, SettingRow::Mark, +1);
+        CHECK(s.mark == next);
+        CHECK(!settingValue(s, SettingRow::Mark, Lang::Uk).empty());
+    }
+    CHECK(changeSetting(s, SettingRow::Mark, -1).mark == MarkStyle::Off);
+    const Settings two = changeSetting(changeSetting(s, SettingRow::Mark, +1), SettingRow::Mark, +1);
+    CHECK(settingValue(two, SettingRow::Mark, Lang::En) == "curse (red)");
     const auto edits = settingsEdits(defaultSettings(), changeSetting(defaultSettings(), SettingRow::Mark, +1), 10);
-    CHECK(edits.size() == 1 && edits[0].section == "aim" && edits[0].key == "mark" && edits[0].value == "sight");
+    CHECK(edits.size() == 1 && edits[0].section == "aim" && edits[0].key == "mark" && edits[0].value == "dpoison");
 }

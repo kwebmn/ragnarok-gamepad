@@ -13,10 +13,15 @@ namespace {
 constexpr uint32_t kStaleMs = 500;
 constexpr uint32_t kMarkStaleMs = 1000;  // a late "!" could land on the wrong moment
 constexpr uint32_t kStateStaleMs = 10000;  // a unit's state is right whenever it arrives
-// The effects a persistent mark borrows (uAthena status.h).
+// The states a persistent mark borrows (uAthena status.h): drawn by the client, with its own sound for some.
+constexpr uint16_t kOpt1Stun = 3;
+constexpr uint16_t kOpt1Sleep = 4;
+constexpr uint16_t kOpt2Poison = 0x0001;
+constexpr uint16_t kOpt2Curse = 0x0002;
+constexpr uint16_t kOpt2Silence = 0x0004;
+constexpr uint16_t kOpt2DeadlyPoison = 0x0080;
 constexpr uint32_t kOptionSight = 0x0001;
 constexpr uint32_t kOptionRuwach = 0x2000;
-constexpr uint16_t kOpt2Poison = 0x0001;
 constexpr uint32_t kAfterStopLogMs = 1500;
 
 std::string hotkeyText(const Hotkey& k) {
@@ -211,7 +216,7 @@ void Session::setMark(MarkStyle style) {
 }
 
 void Session::updatePersistentMark(uint32_t nowMs) {
-    const bool persistent = mark_ == MarkStyle::Sight || mark_ == MarkStyle::Ruwach || mark_ == MarkStyle::Poison;
+    const bool persistent = mark_ != MarkStyle::Gasp && mark_ != MarkStyle::Off;
     uint32_t want = persistent && mapSocket_ != 0 && downOk_ ? controller_.target() : 0;
     const auto& actors = world_.actors();
     if (want != 0 && actors.count(want) == 0) want = 0;
@@ -224,12 +229,22 @@ void Session::updatePersistentMark(uint32_t nowMs) {
     }
     if (want != 0) {
         const Actor& a = actors.at(want);
+        uint16_t opt1 = a.opt1;
         uint16_t opt2 = a.opt2;
         uint32_t option = a.option;
-        if (mark_ == MarkStyle::Sight) option |= kOptionSight;
-        if (mark_ == MarkStyle::Ruwach) option |= kOptionRuwach;
-        if (mark_ == MarkStyle::Poison) opt2 |= kOpt2Poison;
-        toClient_.emplace_back(nowMs + kStateStaleMs, buildUnitState(want, a.opt1, opt2, option));
+        switch (mark_) {
+            case MarkStyle::Poison: opt2 |= kOpt2Poison; break;
+            case MarkStyle::DeadlyPoison: opt2 |= kOpt2DeadlyPoison; break;
+            case MarkStyle::Curse: opt2 |= kOpt2Curse; break;
+            case MarkStyle::Silence: opt2 |= kOpt2Silence; break;
+            case MarkStyle::Stun: opt1 = kOpt1Stun; break;
+            case MarkStyle::Sleep: opt1 = kOpt1Sleep; break;
+            case MarkStyle::Sight: option |= kOptionSight; break;
+            case MarkStyle::Ruwach: option |= kOptionRuwach; break;
+            case MarkStyle::Gasp:
+            case MarkStyle::Off: break;
+        }
+        toClient_.emplace_back(nowMs + kStateStaleMs, buildUnitState(want, opt1, opt2, option));
     }
     marked_ = want;
     remark_ = false;

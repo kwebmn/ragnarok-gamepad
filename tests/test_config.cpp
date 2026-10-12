@@ -68,7 +68,7 @@ TEST(config_v2_keys) {
     Config d = parseConfig("");
     CHECK_EQ(d.repeatMs, 250);
     CHECK(d.traps == (std::vector<uint16_t>{115, 116, 117, 118, 119, 120, 121, 122, 123, 125}));
-    CHECK(d.mark == MarkStyle::Gasp);
+    CHECK(d.mark == MarkStyle::Poison);
     Config c = parseConfig("[skills]\nrepeat_ms = 400\ntraps = 117, 123\n[aim]\nmark = 0\n");
     CHECK_EQ(c.repeatMs, 400);
     CHECK(c.traps == (std::vector<uint16_t>{117, 123}));
@@ -127,12 +127,19 @@ TEST(config_function_key_tokens) {
 }
 
 TEST(config_target_mark_styles) {
-    CHECK(parseConfig("[aim]\nmark = 1\n").mark == MarkStyle::Gasp);  // 0.3 files say 1 / 0
+    CHECK(parseConfig("[aim]\nmark = 1\n").mark == MarkStyle::Poison);  // 0.3 files say 1 / 0: on is the default
     CHECK(parseConfig("[aim]\nmark = gasp\n").mark == MarkStyle::Gasp);
     CHECK(parseConfig("[aim]\nmark = sight\n").mark == MarkStyle::Sight);
     CHECK(parseConfig("[aim]\nmark = Ruwach\n").mark == MarkStyle::Ruwach);
     CHECK(parseConfig("[aim]\nmark = poison\n").mark == MarkStyle::Poison);
+    CHECK(parseConfig("[aim]\nmark = dpoison\n").mark == MarkStyle::DeadlyPoison);
+    CHECK(parseConfig("[aim]\nmark = curse\n").mark == MarkStyle::Curse);
+    CHECK(parseConfig("[aim]\nmark = stun\n").mark == MarkStyle::Stun);
+    CHECK(parseConfig("[aim]\nmark = sleep\n").mark == MarkStyle::Sleep);
+    CHECK(parseConfig("[aim]\nmark = silence\n").mark == MarkStyle::Silence);
     CHECK(parseConfig("[aim]\nmark = off\n").mark == MarkStyle::Off);
-    CHECK(parseConfig("[aim]\nmark = sparkles\n").mark == MarkStyle::Gasp);  // unknown: the default
-    CHECK(std::string(markStyleToken(MarkStyle::Ruwach)) == "ruwach");
+    CHECK(parseConfig("[aim]\nmark = 0\n").mark == MarkStyle::Off);
+    CHECK(parseConfig("[aim]\nmark = sparkles\n").mark == MarkStyle::Poison);  // unknown: the default
+    for (int i = 0; i < kMarkStyles; ++i)  // every style reads back from its own token
+        CHECK(parseMarkStyle(markStyleToken(MarkStyle(i))) && *parseMarkStyle(markStyleToken(MarkStyle(i))) == MarkStyle(i));
 }

@@ -31,7 +31,7 @@ inline std::string hotkeyName(int slot) {
     const std::string key = "F" + std::to_string(slot % 9 + 1);
     return slot < 9 ? key : key + " of row " + std::to_string(slot / 9 + 1);
 }
-constexpr int kClientBarSlots = 9;  // F1-F9 of the first row: what the pad's buttons use
+constexpr int kClientBarSlots = kHotkeySlots;  // all three rows of F1-F9
 
 // A hotkey slot as the client itself keeps it. The uaRO client never sends its bar (no 0x02b9 / 0x02ba),
 // so the pad reads it from the client's memory.
@@ -76,6 +76,8 @@ public:
     // Why a slot from the client's bar could not be used (an unknown skill, no item left); empty otherwise.
     const std::string& hotkeyNote(int slot) const;
     void setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar);
+    // What each slot of the client's bar holds (skill or item name), empty when unknown: for the menu.
+    std::array<std::string, kHotkeySlots> clientBarNames() const;
     // False until the server sends 0x02b9; uAthena only does with HOTKEY_SAVING enabled.
     bool hotkeysKnown() const { return hotkeysKnown_; }
 
@@ -100,6 +102,7 @@ private:
     std::unordered_map<uint16_t, SkillInfo> skills_;
     std::array<Hotkey, kHotkeySlots> hotkeys_{};
     std::array<std::string, kHotkeySlots> hotkeyNotes_{};
+    std::array<ClientBarSlot, kClientBarSlots> clientBar_{};
     bool hotkeysKnown_ = false;
 };
 

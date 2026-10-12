@@ -104,6 +104,12 @@ std::optional<Event> parseS2C(const Bytes& p) {
             }
             return ev;
         }
+        case 0x0095:
+        case 0x0195: {
+            if (n < 30) break;
+            const char* name = reinterpret_cast<const char*>(d + 6);
+            return EvActorName{rd32(d, 2), std::string(name, strnlen(name, 24))};
+        }
         case 0x010e:
             if (n < 11) break;
             return EvSkillUp{rd16(d, 2), rd16(d, 4), rd16(d, 8)};

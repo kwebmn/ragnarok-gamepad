@@ -3,6 +3,7 @@
 
 #include "core/proto/c2s.hpp"
 #include "core/proto/packet_tables.hpp"
+#include "core/config/bindings.hpp"
 #include "core/session.hpp"
 #include "test.hpp"
 
@@ -15,10 +16,13 @@ constexpr Session::SocketId kMap = 7;
 constexpr uint32_t kSelf = 2000001;
 const ViewInfo kView{true, 800, 600};
 
+constexpr uint32_t kChar = 150001;
+
 Bytes wantToConnect() {
     Bytes b(26, 0);
     wr16(b, 0, 0x009b);
     wr32(b, 4, kSelf);
+    wr32(b, 9, kChar);
     return b;
 }
 
@@ -401,4 +405,73 @@ TEST(session_logs_the_client_bar_when_it_changes) {
     lines = s.takeLog();
     CHECK(lines.size() == 1 && lines[0] == "hotkey bar from the client: F1 skill AC_DOUBLE lv 10, F6 item Red Potion (none left)");
     CHECK(s.world().hotkeysKnown());
+}
+
+namespace {
+
+size_t bindRow(uint16_t button) {
+    for (size_t i = 0; i < kBindableButtons.size(); ++i)
+        if (kBindableButtons[i] == button) return i;
+    return 0;
+}
+
+}  // namespace
+
+TEST(session_picks_the_characters_layout) {
+    Profiles p;
+    p.characters[kChar].bindings = defaultBindings();
+    p.characters[kChar].bindings[bindRow(kPadX)] = Action{Action::Kind::Attack, 0};
+    Session s{Config{}};
+    s.setProfiles(p);
+    CHECK(s.controller().bindings() == p.fallback);  // nobody logged in yet
+    connect(s);
+    CHECK_EQ(s.charId(), kChar);
+    CHECK(s.controller().bindings()[bindRow(kPadX)] == (Action{Action::Kind::Attack, 0}));
+}
+
+TEST(session_unknown_character_gets_the_default) {
+    Profiles p;
+    p.fallback[bindRow(kPadA)] = Action{};
+    p.characters[999].bindings = defaultBindings();
+    Session s{Config{}};
+    s.setProfiles(p);
+    connect(s);
+    CHECK(s.controller().bindings() == p.fallback);
+}
+
+TEST(session_asks_for_its_own_name) {
+    Session s{Config{}};
+    connect(s);
+    s.askOwnName(100);  // the menu opened
+    const std::vector<Bytes> ready = s.takeInjectable(100);
+    CHECK_EQ(ready.size(), 1u);
+    CHECK(ready.size() == 1 && rd16(ready[0].data(), 0) == 0x008c && rd32(ready[0].data(), 7) == kSelf);
+    s.askOwnName(200);
+    CHECK(s.takeInjectable(200).empty());  // once per connection
+    Bytes reply(30, 0);
+    wr16(reply, 0, 0x0095);
+    wr32(reply, 2, kSelf);
+    std::memcpy(reply.data() + 6, "Hunter", 6);
+    s.onServerData(kMap, reply.data(), reply.size(), 250);
+    CHECK(s.charName() == "Hunter");
+}
+
+TEST(session_saves_the_layout_for_the_character) {
+    Session s{Config{}};
+    Bindings b = defaultBindings();
+    b[bindRow(kPadL3)] = Action{Action::Kind::Slot, 20};
+    s.saveBindings(b);  // before logging in: the default layout
+    CHECK(s.profiles().fallback == b);
+    connect(s);
+    Bytes reply(30, 0);
+    wr16(reply, 0, 0x0095);
+    wr32(reply, 2, kSelf);
+    std::memcpy(reply.data() + 6, "Hunter", 6);
+    s.onServerData(kMap, reply.data(), reply.size(), 50);
+    b[bindRow(kPadA)] = Action{};
+    s.saveBindings(b);
+    CHECK(s.profiles().characters.count(kChar) == 1);
+    CHECK(s.profiles().characters.count(kChar) && s.profiles().characters.at(kChar).name == "Hunter");
+    CHECK(s.profiles().characters.count(kChar) && s.profiles().characters.at(kChar).bindings == b);
+    CHECK(s.controller().bindings() == b);
 }

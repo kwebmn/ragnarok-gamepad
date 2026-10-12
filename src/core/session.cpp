@@ -68,7 +68,14 @@ void Session::feedUp(Conn& c, const uint8_t* data, size_t n, uint32_t nowMs) {
     for (const Bytes& p : packets) {
         if (auto account = parseWantToConnection(p)) {
             world_.reset(*account);
-            log_.push_back("map server connection, account " + std::to_string(*account));
+            charId_ = parseWantToConnectionCharId(p).value_or(0);
+            auto known = profiles_.characters.find(charId_);
+            charName_ = known == profiles_.characters.end() ? std::string() : known->second.name;
+            nameAsked_ = false;
+            controller_.setBindings(profiles_.forCharacter(charId_));
+            log_.push_back("map server connection, account " + std::to_string(*account) + ", character " +
+                           std::to_string(charId_) +
+                           (known == profiles_.characters.end() ? " (default layout)" : " (its own layout)"));
         } else if (auto change = parseHotkeyChange(p)) {
             world_.setHotkey(change->index, change->key);
             const int row = change->index / 9 + 1;
@@ -100,6 +107,11 @@ void Session::onServerData(SocketId s, const uint8_t* data, size_t n, uint32_t n
         if (!ev) continue;
         if (const auto* walk = std::get_if<EvSelfWalk>(&*ev); walk && justStoppedWalking(nowMs))
             log_.push_back("after the stick: the server walks us " + cellText(walk->from) + " -> " + cellText(walk->to));
+        if (const auto* named = std::get_if<EvActorName>(&*ev); named && named->id == world_.selfId() && !named->name.empty()) {
+            charName_ = named->name;
+            auto it = profiles_.characters.find(charId_);
+            if (it != profiles_.characters.end()) it->second.name = charName_;
+        }
         world_.apply(*ev, nowMs);
         if (std::holds_alternative<EvAuthOk>(*ev) || std::holds_alternative<EvMapChange>(*ev)) controller_.onMapLoaded();
         if (const auto* bar = std::get_if<EvHotkeys>(&*ev)) {
@@ -146,6 +158,7 @@ TickOutput Session::tick(const PadState& pad, const ViewInfo& view, uint32_t now
         toClient_.emplace_back(nowMs, buildEmotion(out.mark, kEmotionGasp));
         requests.push_back(buildNameRequest(out.mark));  // the server answers at once and the "!" rides along
     }
+
     if (requests.empty()) return out;
     if (mapSocket_ != 0 && downOk_ && injectOk_) {
         for (Bytes& p : requests) queue_.emplace_back(nowMs, std::move(p));
@@ -207,6 +220,31 @@ void Session::setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar
                     (s.itemIndex ? " (index " + std::to_string(s.itemIndex) + ")" : std::string(" (none left)"));
     }
     log_.push_back("hotkey bar from the client:" + (line.empty() ? std::string(" empty") : line));
+}
+
+void Session::askOwnName(uint32_t nowMs) {
+    if (nameAsked_ || !world_.inGame() || mapSocket_ == 0 || !downOk_ || !injectOk_) return;
+    nameAsked_ = true;
+    queue_.emplace_back(nowMs, buildNameRequest(world_.selfId()));
+}
+
+void Session::setProfiles(const Profiles& profiles) {
+    profiles_ = profiles;
+    controller_.setBindings(profiles_.forCharacter(charId_));
+}
+
+void Session::saveBindings(const Bindings& bindings) {
+    if (charId_ != 0) {
+        Profiles::Character& c = profiles_.characters[charId_];
+        c.name = charName_;
+        c.bindings = bindings;
+        log_.push_back("layout saved for character " + std::to_string(charId_) +
+                       (charName_.empty() ? std::string() : " (" + charName_ + ")"));
+    } else {
+        profiles_.fallback = bindings;
+        log_.push_back("default layout saved");
+    }
+    controller_.setBindings(bindings);
 }
 
 void Session::markInjectBroken() {

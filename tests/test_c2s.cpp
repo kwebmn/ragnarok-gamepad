@@ -91,3 +91,12 @@ TEST(c2s_name_request_and_stop_attack) {
     CHECK_EQ(int(s.size()), c2sLength(0x0118));
     CHECK_EQ(rd16(s.data(), 0), 0x0118);
 }
+
+TEST(c2s_want_to_connection_char_id) {
+    Bytes b(26, 0);
+    wr16(b, 0, 0x009b);
+    wr32(b, 4, 2000014);
+    wr32(b, 9, 150001);
+    CHECK(parseWantToConnectionCharId(b) && *parseWantToConnectionCharId(b) == 150001u);
+    CHECK(!parseWantToConnectionCharId(Bytes{0x9b, 0x00}));
+}

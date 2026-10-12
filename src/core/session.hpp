@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "core/config/bindings.hpp"
 #include "core/config/config.hpp"
 #include "core/logic/controller.hpp"
 #include "core/proto/framer.hpp"
@@ -44,6 +45,16 @@ public:
     // F1-F9 as read from the client's memory (it never sends its bar). Logs the bar when it changes.
     void setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar);
 
+    // Every character's layout (uaro-pad-binds.ini); the one of the character on the map applies at once.
+    void setProfiles(const Profiles& profiles);
+    const Profiles& profiles() const { return profiles_; }
+    // The settings menu saved `bindings` for the character on the map (before anyone logs in: the default).
+    void saveBindings(const Bindings& bindings);
+    // Asks the server for our character's name (once per map server connection): the menu shows it.
+    void askOwnName(uint32_t nowMs);
+    uint32_t charId() const { return charId_; }            // from 0x009b; 0 before the first map login
+    const std::string& charName() const { return charName_; }  // as the server spells it; may be empty
+
     SocketId mapSocket() const { return mapSocket_; }
     const WorldState& world() const { return world_; }
     const Controller& controller() const { return controller_; }
@@ -67,6 +78,10 @@ private:
     bool padWalking_ = false;
     std::optional<uint32_t> walkStopMs_;  // the stick walk ended: what follows is logged for a moment
     std::optional<std::array<ClientBarSlot, kClientBarSlots>> loggedBar_;
+    Profiles profiles_;
+    uint32_t charId_ = 0;
+    std::string charName_;
+    bool nameAsked_ = false;  // our own name was requested on this map server connection
     std::unordered_map<SocketId, Conn> conns_;
     SocketId mapSocket_ = 0;
     bool downOk_ = false;

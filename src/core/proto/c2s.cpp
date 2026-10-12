@@ -69,6 +69,11 @@ std::optional<uint32_t> parseWantToConnection(const Bytes& p) {
     return rd32(p.data(), 4);
 }
 
+std::optional<uint32_t> parseWantToConnectionCharId(const Bytes& p) {
+    if (p.size() < 26 || rd16(p.data(), 0) != 0x009b) return std::nullopt;
+    return rd32(p.data(), 9);
+}
+
 std::optional<HotkeyChange> parseHotkeyChange(const Bytes& p) {
     if (p.size() < 11 || rd16(p.data(), 0) != 0x02ba) return std::nullopt;
     HotkeyChange c;

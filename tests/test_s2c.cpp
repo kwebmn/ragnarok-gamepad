@@ -276,3 +276,19 @@ TEST(s2c_skill_names) {
     CHECK(sl && sl->skills.size() == 2 && sl->skills[0].name == "AC_DOUBLE");
     CHECK(sl && sl->skills.size() == 2 && sl->skills[1].name == "ABCDEFGHIJKLMNOPQRSTUVWX");
 }
+
+TEST(s2c_actor_names) {
+    Bytes n = pkt(0x0095, 30);
+    wr32(n, 2, 2000014);
+    std::memcpy(n.data() + 6, "Hunter", 6);
+    auto e = parseS2C(n);
+    auto* name = as<EvActorName>(e);
+    CHECK(name && name->id == 2000014u && name->name == "Hunter");
+    Bytes full = pkt(0x0195, 102);  // with party and guild
+    wr32(full, 2, 2000014);
+    std::memcpy(full.data() + 6, "Hunter", 6);
+    std::memcpy(full.data() + 30, "Party", 5);
+    auto e2 = parseS2C(full);
+    auto* name2 = as<EvActorName>(e2);
+    CHECK(name2 && name2->name == "Hunter");
+}

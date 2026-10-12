@@ -31,6 +31,7 @@ struct HotkeyChange {
 };
 
 std::optional<uint32_t> parseWantToConnection(const Bytes& p);  // 0x009b -> account id
+std::optional<uint32_t> parseWantToConnectionCharId(const Bytes& p);  // 0x009b -> character id
 std::optional<HotkeyChange> parseHotkeyChange(const Bytes& p);  // 0x02ba
 std::optional<Cell> parseWalkRequest(const Bytes& p);           // 0x00a7
 

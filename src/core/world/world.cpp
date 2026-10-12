@@ -82,8 +82,15 @@ const std::string& WorldState::hotkeyNote(int slot) const {
     return hotkeyNotes_[size_t(slot)];
 }
 
+std::array<std::string, kHotkeySlots> WorldState::clientBarNames() const {
+    std::array<std::string, kHotkeySlots> names{};
+    for (size_t i = 0; i < clientBar_.size() && i < names.size(); ++i) names[i] = clientBar_[i].name;
+    return names;
+}
+
 void WorldState::setClientBar(const std::array<ClientBarSlot, kClientBarSlots>& bar) {
     hotkeysKnown_ = true;
+    clientBar_ = bar;
     for (size_t i = 0; i < bar.size(); ++i) {
         const ClientBarSlot& slot = bar[i];
         Hotkey key;

@@ -183,3 +183,17 @@ TEST(world_client_bar) {
     CHECK(w.skillByName("AC_DOUBLE") && w.skillByName("AC_DOUBLE")->id == 46);
     CHECK(!w.skillByName("NV_BASIC"));
 }
+
+TEST(world_client_bar_names) {
+    WorldState w = inGame();
+    std::array<ClientBarSlot, kClientBarSlots> bar{};
+    bar[0].kind = ClientBarSlot::Kind::Skill;
+    bar[0].name = "AC_DOUBLE";
+    bar[26].kind = ClientBarSlot::Kind::Item;
+    bar[26].name = "Red Potion";
+    w.setClientBar(bar);
+    const auto names = w.clientBarNames();
+    CHECK(names[0] == "AC_DOUBLE");
+    CHECK(names[26] == "Red Potion");
+    CHECK(names[1].empty());
+}

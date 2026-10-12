@@ -740,6 +740,19 @@ TEST(ctl_right_stick_redirects_running_attack) {
     CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000002u);
 }
 
+TEST(ctl_new_target_cancels_a_walk_up_to_the_old_one) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{112, 100});  // east, the nearest, out of Fire Bolt's range
+    addMob(w, 110000002, Cell{100, 114});  // north, farther
+    c.tick(pad(kPadUp), w, view(), 1000);  // walking up to cast Fire Bolt at the east one
+    CHECK(c.approaching());
+    c.tick(pad(), w, view(), 1100);
+    c.tick(padR(0, 1), w, view(), 1200);  // the right stick picks the north one
+    CHECK_EQ(c.target(), 110000002u);
+    CHECK(!c.approaching());  // the Fire Bolt does not go to the old one
+}
+
 TEST(ctl_r3_holds_aim_until_stick_is_released) {
     Controller c(Config{});
     WorldState w = world();

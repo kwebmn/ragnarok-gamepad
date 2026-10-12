@@ -90,6 +90,7 @@ void Controller::setTarget(uint32_t id, uint32_t now, TickOutput& out) {
     target_ = id;
     attackSent_ = false;
     engagedSinceMs_.reset();
+    if (approach_ && !approach_->pickup && approach_->id != id) approach_.reset();  // a skill for the old one
     if (id == 0) return;
     if (out.rumble == Rumble::None) out.rumble = Rumble::TargetSwitch;
     out.notes.push_back("target " + std::to_string(id));

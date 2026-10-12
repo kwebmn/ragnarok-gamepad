@@ -12,6 +12,7 @@
 
 #include "core/bytes.hpp"
 #include "core/config/bindings.hpp"
+#include "core/config/settings.hpp"
 #include "core/config/config.hpp"
 #include "core/logic/cursor_bridge.hpp"
 #include "core/logic/settings_menu.hpp"
@@ -226,8 +227,8 @@ overlay::View menuView() {
                                 : !name.empty() ? widen(name, CP_ACP)
                                                 : L"персонаж " + std::to_wstring(id));
     for (const SettingsMenu::Row& row : s.menu.rows()) {
-        v.buttons.push_back(widen(row.button, CP_UTF8));
-        v.actions.push_back(widen(row.action, CP_UTF8));
+        v.buttons.push_back(row.hasValue ? widen(row.label, CP_UTF8) : std::wstring());
+        v.actions.push_back(widen(row.hasValue ? row.value : row.label, CP_UTF8));
     }
     v.selected = s.menu.selected();
     v.help = L"↑↓ выбрать    ←→ изменить    Y — по умолчанию\nA — сохранить    B — отмена    Start — сохранить";
@@ -265,8 +266,8 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
     s.prevPadButtons = buttons;
     if (!s.menu.isOpen()) {
         if (!(down & kPadStart) || !view.focused || !s.hwnd) return false;
-        s.menu.open(s.session->controller().bindings(), s.session->world().clientBarNames(), buttons, now, pad.lx,
-                    pad.ly);
+        s.menu.open(s.session->controller().bindings(), settingsFrom(s.cfg), s.session->world().clientBarNames(),
+                    buttons, now, pad.lx, pad.ly);
         s.session->askOwnName(now);
         LOG_INFO("settings menu opened");
     }
@@ -275,7 +276,7 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
         switch (e.click) {
             case overlay::Click::Select:
                 s.menu.select(e.row);
-                if (e.row == s.menu.rowCount() - 1) s.menu.resetAll();
+                if (e.row == s.menu.rowCount() - 1) s.menu.resetTab();
                 break;
             case overlay::Click::Previous:
                 s.menu.change(e.row, -1);

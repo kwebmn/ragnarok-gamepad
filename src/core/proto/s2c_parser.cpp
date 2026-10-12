@@ -44,6 +44,11 @@ std::optional<Event> parseS2C(const Bytes& p) {
             const Cell c = decodePos3(d, 46);
             return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), c, c};
         }
+        case 0x007b: {  // anything but a player that walks into view (uAthena clif_set007b)
+            if (n < 60) break;
+            const Move m = decodePos6(d, 50);
+            return EvActor{rd32(d, 2), rd16(d, 14), rd16(d, 16), rd16(d, 6), m.from, m.to};
+        }
         case 0x007c: {
             if (n < 41) break;
             const Cell c = decodePos3(d, 36);

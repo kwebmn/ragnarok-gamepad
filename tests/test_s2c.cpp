@@ -49,6 +49,18 @@ TEST(s2c_self_position_packets) {
     CHECK(sp && sp->id == 2000001u && sp->pos == (Cell{40, 41}));
 }
 
+TEST(s2c_monster_walking_into_view_0x007b) {  // uAthena clif_set007b for anything but a player
+    Bytes p = pkt(0x007b, 60);
+    wr32(p, 2, 110000503);
+    wr16(p, 6, 300);
+    wr16(p, 14, 1063);  // Lunatic
+    encodePos6(p, 50, Cell{30, 40}, Cell{35, 44});
+    auto e = parseS2C(p);
+    auto* a = as<EvActor>(e);
+    CHECK(a && a->id == 110000503u && a->cls == 1063 && a->hair == 0 && a->speed == 300);
+    CHECK(a && a->from == (Cell{30, 40}) && a->to == (Cell{35, 44}));
+}
+
 TEST(s2c_monster_packets) {
     Bytes idle = pkt(0x0078, 54);
     wr32(idle, 2, 110000500);

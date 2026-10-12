@@ -166,6 +166,7 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         approach_.reset();
         out.notes.push_back("mouse click: the pad stops its attack");
     }
+    dropFarTarget(world, now, out);
     walk(pad, world, view, now, out);
     aim(pad, world, now, out);
     handleButtons(buttons, down, world, now, out);
@@ -440,6 +441,20 @@ void Controller::clearTarget(const WorldState& world, uint32_t now, TickOutput& 
     approach_.reset();
     out.rumble = Rumble::TargetCleared;
     out.notes.push_back("target cleared");
+}
+
+// A target left far behind is not what A or a slot should go for: drop it as if it were gone. A held A then
+// takes the nearest one (maintainTarget). The server may still be chasing it for our attack: stop that.
+void Controller::dropFarTarget(const WorldState& world, uint32_t now, TickOutput& out) {
+    if (target_ == 0) return;
+    const std::optional<Cell> pos = world.actorPos(target_, now);
+    if (!pos || cellDistance(world.selfPos(now), *pos) <= kTargetReach) return;
+    out.notes.push_back("target " + std::to_string(target_) + " is too far, dropped");
+    if (wantAttack_ || attackSent_) out.packets.push_back(buildStopAttack());
+    target_ = 0;
+    attackSent_ = false;
+    engagedSinceMs_.reset();
+    if (approach_ && !approach_->pickup) approach_.reset();
 }
 
 void Controller::stepApproach(const WorldState& world, uint32_t now, TickOutput& out) {

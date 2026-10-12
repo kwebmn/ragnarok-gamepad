@@ -8,14 +8,18 @@
 
 namespace uapad {
 
-// Monsters we may target, nearest first (Chebyshev distance, ties by id).
+// How far (in RO steps) a target may be: the right stick looks no further, and a target left further
+// behind is dropped.
+constexpr int kTargetReach = 15;
+
+// Monsters we may target, nearest first: by straight-line distance, then RO steps, then id.
 // Ids in `blacklistUntil` are skipped until nowMs reaches their deadline.
 std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
                                        const std::unordered_map<uint32_t, uint32_t>& blacklistUntil);
 
 // How well monster `id` matches the map direction (dirX, dirY) (+y north, any length): degrees off the
 // direction plus 2 per cell of distance, lower is better. Nothing when it is more than 45 degrees off,
-// more than 15 cells away, on our own cell or unknown.
+// more than kTargetReach away, on our own cell or unknown.
 std::optional<double> aimScore(const WorldState& world, uint32_t nowMs, uint32_t id, double dirX, double dirY);
 
 // The monster the player points at: the lowest aimScore (ties by id) among monsters that are not

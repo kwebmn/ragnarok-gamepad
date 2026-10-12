@@ -93,6 +93,7 @@ private:
     void stepApproach(const WorldState& world, uint32_t now, TickOutput& out);
     void maintainTarget(bool attackHeld, const WorldState& world, uint32_t now, TickOutput& out);
     uint32_t nearestTarget(const WorldState& world, uint32_t now) const;
+    void dropFarTarget(const WorldState& world, uint32_t now, TickOutput& out);
     void setTarget(uint32_t id, uint32_t now, TickOutput& out);
     bool targetAlive(const WorldState& world) const;
     void deny(TickOutput& out, const std::string& why);

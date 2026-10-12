@@ -30,7 +30,7 @@ struct EvMapChange { std::string map; Cell pos; };   // 0x0091, 0x0092
 struct EvSelfWalk { Cell from; Cell to; };           // 0x0087
 struct EvSetPos { uint32_t id = 0; Cell pos; };      // 0x0088, 0x01ff
 struct EvVanish { uint32_t id = 0; uint8_t type = 0; };  // 0x0080 (type 1 = died)
-struct EvActor {                                     // 0x0078, 0x007c, 0x022c
+struct EvActor {                                     // 0x0078, 0x007b, 0x007c, 0x022c
     uint32_t id = 0;
     uint16_t cls = 0;
     uint16_t hair = 0;

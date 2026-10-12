@@ -211,6 +211,59 @@ TEST(ctl_held_attack_moves_on_to_next) {
     CHECK_EQ(rd32(pkt(o, 0).data(), 5), 110000002u);
 }
 
+TEST(ctl_target_further_than_15_cells_is_dropped) {
+    Controller c(Config{});
+    WorldState w = world();  // we stand at (100, 100)
+    addMob(w, 110000001, Cell{102, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    w.apply(EvSetPos{110000001, Cell{109, 100}}, 1200);  // 9 cells: a hunter shooting from afar keeps it
+    c.tick(pad(), w, view(), 1300);
+    CHECK_EQ(c.target(), 110000001u);
+    w.apply(EvSetPos{110000001, Cell{116, 100}}, 1400);  // 16 cells
+    TickOutput o = c.tick(pad(), w, view(), 1500);
+    CHECK_EQ(c.target(), 0u);
+    CHECK(!c.attacking());
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0118);  // the server may be chasing it: stop that too
+    bool noted = false;
+    for (const std::string& n : o.notes) noted = noted || n.find("too far") != std::string::npos;
+    CHECK(noted);
+}
+
+TEST(ctl_held_attack_leaves_a_far_target_for_the_nearest) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{102, 100});
+    addMob(w, 110000002, Cell{97, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    CHECK_EQ(c.target(), 110000001u);
+    w.apply(EvSetPos{110000001, Cell{120, 100}}, 1100);
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1400);
+    CHECK_EQ(c.target(), 110000002u);
+    CHECK_EQ(o.packets.size(), 2u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0118);
+    CHECK_EQ(pid(pkt(o, 1)), 0x0190);
+    CHECK_EQ(rd32(pkt(o, 1).data(), 5), 110000002u);
+}
+
+TEST(ctl_slot_does_not_cast_on_a_far_target) {
+    Config cfg;
+    Controller c(cfg);
+    WorldState w = slotWorld();  // X: Bash (range 1)
+    addMob(w, 110000001, Cell{101, 100});
+    addMob(w, 110000002, Cell{99, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);
+    CHECK_EQ(c.target(), 110000001u);
+    w.apply(EvSetPos{110000001, Cell{100, 120}}, 1200);
+    TickOutput o = c.tick(pad(kPadX), w, view(), 1300);
+    CHECK_EQ(c.target(), 110000002u);
+    bool cast = false;
+    for (const Bytes& p : o.packets) cast = cast || (pid(p) == 0x0072 && rd32(p.data(), 21) == 110000002u);
+    CHECK(cast);
+}
+
 TEST(ctl_candidates_are_monsters_only) {
     Controller c(Config{});
     WorldState w = world();

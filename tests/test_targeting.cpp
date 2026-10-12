@@ -25,6 +25,13 @@ TEST(targeting_ties_broken_by_id) {
     CHECK(c == (std::vector<uint32_t>{110000010, 110000020}));
 }
 
+TEST(targeting_nearest_is_by_straight_line) {
+    WorldState w = fx::world();  // we stand at (100, 100)
+    fx::addMob(w, 110000001, Cell{105, 105});  // 5 RO steps, but about 7 cells in a straight line
+    fx::addMob(w, 110000002, Cell{106, 100});  // 6 either way
+    CHECK(targetCandidates(w, 0, {}) == (std::vector<uint32_t>{110000002, 110000001}));
+}
+
 TEST(targeting_blacklist_until_expiry) {
     WorldState w = fx::world();
     fx::addMob(w, 110000001, Cell{101, 100});

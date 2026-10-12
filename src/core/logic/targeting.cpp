@@ -2,14 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
-#include <utility>
+#include <tuple>
 
 namespace uapad {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kAimConeDeg = 45.0;
-constexpr int kAimReach = 15;
 constexpr double kAimPerCell = 2.0;
 
 bool blacklisted(const std::unordered_map<uint32_t, uint32_t>& blacklistUntil, uint32_t id, uint32_t nowMs) {
@@ -22,17 +21,21 @@ bool blacklisted(const std::unordered_map<uint32_t, uint32_t>& blacklistUntil, u
 std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
                                        const std::unordered_map<uint32_t, uint32_t>& blacklistUntil) {
     const Cell me = world.selfPos(nowMs);
-    std::vector<std::pair<int, uint32_t>> scored;
+    std::vector<std::tuple<int, int, uint32_t>> scored;  // squared straight-line distance, RO steps, id
     for (const auto& entry : world.actors()) {
         const uint32_t id = entry.first;
         if (!world.isMonster(entry.second)) continue;
         if (blacklisted(blacklistUntil, id, nowMs)) continue;
-        if (auto pos = world.actorPos(id, nowMs)) scored.emplace_back(cellDistance(me, *pos), id);
+        if (auto pos = world.actorPos(id, nowMs)) {
+            const int dx = pos->x - me.x;
+            const int dy = pos->y - me.y;
+            scored.emplace_back(dx * dx + dy * dy, cellDistance(me, *pos), id);
+        }
     }
     std::sort(scored.begin(), scored.end());
     std::vector<uint32_t> ids;
     ids.reserve(scored.size());
-    for (const auto& s : scored) ids.push_back(s.second);
+    for (const auto& s : scored) ids.push_back(std::get<2>(s));
     return ids;
 }
 
@@ -42,7 +45,7 @@ std::optional<double> aimScore(const WorldState& world, uint32_t nowMs, uint32_t
     if (!pos || len == 0) return std::nullopt;
     const Cell me = world.selfPos(nowMs);
     const int reach = cellDistance(me, *pos);
-    if (reach == 0 || reach > kAimReach) return std::nullopt;
+    if (reach == 0 || reach > kTargetReach) return std::nullopt;
     const double dx = pos->x - me.x;
     const double dy = pos->y - me.y;
     const double dist = std::hypot(dx, dy);

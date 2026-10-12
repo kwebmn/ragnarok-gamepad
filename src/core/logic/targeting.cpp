@@ -1,9 +1,23 @@
 #include "core/logic/targeting.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace uapad {
+namespace {
+
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kAimConeDeg = 45.0;
+constexpr int kAimReach = 15;
+constexpr double kAimPerCell = 2.0;
+
+bool blacklisted(const std::unordered_map<uint32_t, uint32_t>& blacklistUntil, uint32_t id, uint32_t nowMs) {
+    auto bl = blacklistUntil.find(id);
+    return bl != blacklistUntil.end() && int32_t(nowMs - bl->second) < 0;
+}
+
+}  // namespace
 
 std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
                                        const std::unordered_map<uint32_t, uint32_t>& blacklistUntil) {
@@ -12,8 +26,7 @@ std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
     for (const auto& entry : world.actors()) {
         const uint32_t id = entry.first;
         if (!world.isMonster(entry.second)) continue;
-        auto bl = blacklistUntil.find(id);
-        if (bl != blacklistUntil.end() && int32_t(nowMs - bl->second) < 0) continue;
+        if (blacklisted(blacklistUntil, id, nowMs)) continue;
         if (auto pos = world.actorPos(id, nowMs)) scored.emplace_back(cellDistance(me, *pos), id);
     }
     std::sort(scored.begin(), scored.end());
@@ -21,6 +34,39 @@ std::vector<uint32_t> targetCandidates(const WorldState& world, uint32_t nowMs,
     ids.reserve(scored.size());
     for (const auto& s : scored) ids.push_back(s.second);
     return ids;
+}
+
+std::optional<double> aimScore(const WorldState& world, uint32_t nowMs, uint32_t id, double dirX, double dirY) {
+    auto pos = world.actorPos(id, nowMs);
+    const double len = std::hypot(dirX, dirY);
+    if (!pos || len == 0) return std::nullopt;
+    const Cell me = world.selfPos(nowMs);
+    const int reach = cellDistance(me, *pos);
+    if (reach == 0 || reach > kAimReach) return std::nullopt;
+    const double dx = pos->x - me.x;
+    const double dy = pos->y - me.y;
+    const double dist = std::hypot(dx, dy);
+    const double cosOff = std::clamp((dx * dirX + dy * dirY) / (dist * len), -1.0, 1.0);
+    const double off = std::acos(cosOff) * 180.0 / kPi;
+    if (off > kAimConeDeg) return std::nullopt;
+    return off + kAimPerCell * dist;
+}
+
+uint32_t pickInDirection(const WorldState& world, uint32_t nowMs, double dirX, double dirY,
+                         const std::unordered_map<uint32_t, uint32_t>& blacklistUntil) {
+    uint32_t best = 0;
+    double bestScore = 0;
+    for (const auto& entry : world.actors()) {
+        const uint32_t id = entry.first;
+        if (!world.isMonster(entry.second) || blacklisted(blacklistUntil, id, nowMs)) continue;
+        auto score = aimScore(world, nowMs, id, dirX, dirY);
+        if (!score) continue;
+        if (best == 0 || *score < bestScore || (*score == bestScore && id < best)) {
+            best = id;
+            bestScore = *score;
+        }
+    }
+    return best;
 }
 
 uint32_t cycleTarget(const std::vector<uint32_t>& candidates, uint32_t current, int dir) {

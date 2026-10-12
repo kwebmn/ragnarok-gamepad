@@ -298,6 +298,79 @@ TEST(ctl_slot_with_only_a_far_monster_is_denied) {
     CHECK_EQ(c.target(), 0u);
 }
 
+// --- which monster a press goes for: the nearest, unless it is being fought or was picked with the right stick
+
+TEST(ctl_press_takes_the_nearest_not_a_remembered_target) {
+    Controller c(Config{});
+    WorldState w = world();  // we stand at (100, 100)
+    addMob(w, 110000001, Cell{102, 100});
+    c.tick(pad(kPadA), w, view(), 1000);  // fights 110000001
+    c.tick(pad(), w, view(), 1100);
+    PadState walk = pad();
+    walk.lx = 1.0f;
+    c.tick(walk, w, view(), 1200);  // the stick walk ends the fight; the monster stays remembered
+    c.tick(pad(), w, view(), 1300);
+    w.apply(EvSetPos{110000001, Cell{108, 100}}, 1400);
+    addMob(w, 110000002, Cell{98, 101});  // now the nearest
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1500);
+    CHECK_EQ(c.target(), 110000002u);
+    CHECK_EQ(o.mark, 110000002u);
+}
+
+TEST(ctl_press_keeps_the_monster_under_attack) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{103, 100});
+    c.tick(pad(kPadA), w, view(), 1000);
+    c.tick(pad(), w, view(), 1100);  // a tap fights it until it is gone
+    addMob(w, 110000002, Cell{101, 100});  // a nearer one turns up
+    c.tick(pad(kPadA), w, view(), 1200);
+    CHECK_EQ(c.target(), 110000001u);
+}
+
+TEST(ctl_press_keeps_a_right_stick_pick) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{108, 100});  // east, 8 cells
+    addMob(w, 110000002, Cell{98, 100});   // west, 2 cells
+    c.tick(padR(1, 0), w, view(), 1000);   // picked on purpose
+    c.tick(pad(), w, view(), 1100);
+    c.tick(pad(kPadA), w, view(), 1200);
+    CHECK_EQ(c.target(), 110000001u);
+}
+
+TEST(ctl_slot_takes_the_nearest_when_not_fighting) {
+    Controller c(Config{});
+    WorldState w = slotWorld();  // X: Bash (range 1)
+    addMob(w, 110000001, Cell{101, 100});
+    c.tick(pad(kPadX), w, view(), 1000);  // Bash on the nearest: it becomes the target
+    c.tick(pad(), w, view(), 1100);
+    CHECK_EQ(c.target(), 110000001u);
+    w.apply(EvSetPos{110000001, Cell{104, 100}}, 1200);
+    addMob(w, 110000002, Cell{99, 100});
+    TickOutput o = c.tick(pad(kPadX), w, view(), 1700);
+    CHECK_EQ(c.target(), 110000002u);
+    bool cast = false;
+    for (const Bytes& p : o.packets) cast = cast || (pid(p) == 0x0072 && rd32(p.data(), 21) == 110000002u);
+    CHECK(cast);
+}
+
+TEST(ctl_press_logs_why_it_took_that_monster) {
+    Controller c(Config{});
+    WorldState w = world();
+    addMob(w, 110000001, Cell{103, 104});  // 5.0 in a straight line, 4 RO steps
+    addMob(w, 110000002, Cell{95, 100});   // 5.0, 5 steps
+    TickOutput o = c.tick(pad(kPadA), w, view(), 1000);
+    CHECK_EQ(c.target(), 110000001u);
+    bool told = false;
+    for (const std::string& n : o.notes)
+        told = told || (n.find("nearest of 2") != std::string::npos &&
+                        n.find("110000001 at (103,104) 5.0") != std::string::npos &&
+                        n.find("110000002 at (95,100) 5.0") != std::string::npos &&
+                        n.find("we are at (100,100)") != std::string::npos);
+    CHECK(told);
+}
+
 TEST(ctl_candidates_are_monsters_only) {
     Controller c(Config{});
     WorldState w = world();

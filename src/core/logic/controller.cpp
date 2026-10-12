@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "core/logic/slots.hpp"
 #include "core/logic/targeting.hpp"
@@ -69,6 +70,37 @@ bool Controller::targetAlive(const WorldState& world) const {
     return target_ != 0 && world.actors().count(target_) != 0;
 }
 
+bool Controller::keepsTarget(const WorldState& world) const {
+    const bool walkingUp = approach_ && !approach_->pickup && approach_->id == target_;
+    return targetAlive(world) && (wantAttack_ || picked_ || walkingUp);
+}
+
+namespace {
+
+std::string cellsText(const Cell& a, const Cell& b) {
+    char text[16];
+    std::snprintf(text, sizeof text, "%.1f", std::hypot(double(a.x - b.x), double(a.y - b.y)));
+    return text;
+}
+
+}  // namespace
+
+uint32_t Controller::takeNearest(const WorldState& world, uint32_t now, const char* why, TickOutput& out) {
+    const std::vector<uint32_t> c = targetCandidates(world, now, blacklist_);
+    if (c.empty()) return 0;
+    const Cell me = world.selfPos(now);
+    std::string note = std::string(why) + ": nearest of " + std::to_string(c.size()) + " within reach:";
+    for (size_t i = 0; i < c.size() && i < 3; ++i) {
+        const std::optional<Cell> pos = world.actorPos(c[i], now);
+        if (!pos) continue;
+        note += std::string(i == 0 ? " " : ", then ") + std::to_string(c[i]) + " at " + cellText(*pos) + " " +
+                cellsText(*pos, me);
+    }
+    out.notes.push_back(note + "; we are at " + cellText(me));
+    setTarget(c.front(), now, out);
+    return c.front();
+}
+
 uint32_t Controller::nearestTarget(const WorldState& world, uint32_t now) const {
     auto c = targetCandidates(world, now, blacklist_);
     return c.empty() ? 0 : c.front();
@@ -92,6 +124,7 @@ void Controller::onClientSkill(uint32_t now) { attackAgainSoon(now); }
 void Controller::setTarget(uint32_t id, uint32_t now, TickOutput& out) {
     if (id == target_) return;
     target_ = id;
+    picked_ = false;
     attackSent_ = false;
     engagedSinceMs_.reset();
     if (approach_ && !approach_->pickup && approach_->id != id) approach_.reset();  // a skill for the old one
@@ -245,13 +278,18 @@ void Controller::aim(const PadState& pad, const WorldState& world, uint32_t now,
     double dirY = 0;
     camera_.toWorld(pad.rx, -pad.ry, dirX, dirY);  // the stick's +y is up, the screen's is down
     const uint32_t best = pickInDirection(world, now, dirX, dirY, blacklist_);
-    if (best == 0 || best == target_) return;
+    if (best == 0) return;
+    if (best == target_) {  // pointing at the target makes it a choice
+        picked_ = true;
+        return;
+    }
     if (targetAlive(world)) {
         const auto current = aimScore(world, now, target_, dirX, dirY);
         const auto challenger = aimScore(world, now, best, dirX, dirY);
         if (current && challenger && *challenger + kAimSwitchMargin > *current) return;
     }
     setTarget(best, now, out);  // a running attack follows: setTarget asks for a new attack request
+    picked_ = true;
 }
 
 void Controller::handleButtons(uint16_t held, uint16_t down, const WorldState& world, uint32_t now,
@@ -313,13 +351,14 @@ void Controller::fire(const Action& a, bool repeat, const WorldState& world, uin
 }
 
 void Controller::attack(const WorldState& world, uint32_t now, TickOutput& out) {
-    if (!targetAlive(world)) {
-        const uint32_t id = nearestTarget(world, now);
-        if (id == 0) {
-            deny(out, "no monsters around");
-            return;
-        }
-        setTarget(id, now, out);
+    if (keepsTarget(world)) {
+        const std::optional<Cell> pos = world.actorPos(target_, now);
+        out.notes.push_back("attack: keeps " + std::to_string(target_) +
+                            (picked_ ? " (picked with the right stick)" : " (being fought)") +
+                            (pos ? " at " + cellText(*pos) : std::string()));
+    } else if (takeNearest(world, now, "attack", out) == 0) {
+        deny(out, "no monsters around");
+        return;
     }
     wantAttack_ = true;
     attackSent_ = false;
@@ -340,7 +379,7 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
     std::optional<uint32_t>& last = lastSlotMs_[size_t(slot)];
     if (!due(last, now, kSlotIntervalMs)) return;
     last = now;
-    const uint32_t target = targetAlive(world) ? target_ : 0;
+    const uint32_t target = keepsTarget(world) ? target_ : 0;
     const uint32_t nearest = target != 0 ? 0 : nearestTarget(world, now);
     SlotDecision d = decideSlot(key, world, target, nearest, cfg_, now);
     if (d.kind == SlotDecision::Kind::Approach && walking_) {
@@ -349,7 +388,10 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
         return;
     }
     if (d.kind == SlotDecision::Kind::Approach && repeat && approach_) return;  // a press started that walk
-    if (d.newTarget != 0) setTarget(d.newTarget, now, out);
+    if (d.newTarget != 0 && d.newTarget == nearest)
+        takeNearest(world, now, hotkeyName(slot).c_str(), out);  // the same monster, with what the pad saw
+    else if (d.newTarget != 0)
+        setTarget(d.newTarget, now, out);
     switch (d.kind) {
         case SlotDecision::Kind::Deny:
             if (!repeat) deny(out, d.reason);
@@ -524,7 +566,7 @@ void Controller::maintainTarget(bool attackHeld, const WorldState& world, uint32
         stopAttacking();
     const bool idle = !walking_ && !approach_ && !world.sitting();
     if (wantAttack_ && target_ == 0 && idle) {
-        if (const uint32_t id = nearestTarget(world, now)) setTarget(id, now, out);
+        if (nearestTarget(world, now) != 0) takeNearest(world, now, "held attack", out);
     }
     // The server drops our attack for many reasons (a skill, a cast, a click elsewhere). Standing still with
     // no hit of ours for a while means it is not attacking: ask again. Not while moving: every attack

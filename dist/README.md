@@ -21,7 +21,7 @@ Delete `dinput.dll`, `uaro-pad.ini` and `uaro-pad-binds.ini` from the client fol
 | Left stick | walk: the character goes where the stick points; let go to stop |
 | Right stick | pick the monster in the direction of the stick: a "!" appears over it and the pad gives a short buzz |
 | R3 (press the right stick) | clear the target, stop the attack and the walk up to a monster |
-| A | attack the target, or the nearest monster when there is none. The attack goes on while the target lives and continues after skills. Hold A: once the target dies the next one is taken at once |
+| A | attack the nearest monster. A monster the pad is fighting right now, or one you picked with the right stick, stays the target. The attack goes on while the target lives and continues after skills. Hold A: once the target dies the next one is taken at once |
 | X, Y, B | slots F1, F2, F3 |
 | RB, RT | slots F4, F5 |
 | LB | slot F6 — handy for a potion |
@@ -35,7 +35,7 @@ A held slot button (and LT) repeats 4 times a second (`repeat_ms` in `uaro-pad.i
 
 The attack stops when you walk with the left stick, press R3 or click with the real mouse; press A again afterwards (or hold A: the attack then goes on by itself as soon as you stop).
 
-"Nearest" means nearest in a straight line, the way you see it on the screen, and no further than 15 cells — about the edge of the screen (the server shows the client monsters much further away). A target that gets more than 15 cells away (you walked off, or it ran) is dropped, so the next A goes for the nearest monster. A hunter shooting from 9 cells keeps the target.
+A and the slot buttons pick the nearest monster at the moment you press them; a monster you fought earlier and walked away from does not count. The log tells what the pad saw: a line like `attack: nearest of 3 within reach: …; we are at (x,y)`. "Nearest" means nearest in a straight line, the way you see it on the screen, and no further than 15 cells — about the edge of the screen (the server shows the client monsters much further away). A target that gets more than 15 cells away (you walked off, or it ran) is dropped, so the next A goes for the nearest monster. A hunter shooting from 9 cells keeps the target.
 
 Skills and items go onto the hotkey bar as usual, with the mouse. By default the buttons use the first row (F1–F9); the second and the third rows can be assigned in the Start menu. The module reads the bar from the client itself, nothing needs to be dragged again; what it saw is in the log, line `hotkey bar from the client`. The module casts a slot's skill on the target by itself — no need to pick the monster with the mouse as you would after pressing F1 on the keyboard.
 

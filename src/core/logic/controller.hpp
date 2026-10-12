@@ -93,6 +93,11 @@ private:
     void stepApproach(const WorldState& world, uint32_t now, TickOutput& out);
     void maintainTarget(bool attackHeld, const WorldState& world, uint32_t now, TickOutput& out);
     uint32_t nearestTarget(const WorldState& world, uint32_t now) const;
+    // The target a press goes for as it is: alive, and being fought or picked with the right stick. Any
+    // other remembered target gives way to the nearest monster.
+    bool keepsTarget(const WorldState& world) const;
+    // Takes the nearest monster as the target, telling the log what the pad saw; 0 when there is none.
+    uint32_t takeNearest(const WorldState& world, uint32_t now, const char* why, TickOutput& out);
     void dropFarTarget(const WorldState& world, uint32_t now, TickOutput& out);
     void setTarget(uint32_t id, uint32_t now, TickOutput& out);
     bool targetAlive(const WorldState& world) const;
@@ -116,6 +121,7 @@ private:
     bool aiming_ = false;
     bool aimLatched_ = false;  // R3 dropped the target: no aiming until the stick comes back
     uint32_t target_ = 0;
+    bool picked_ = false;      // target_ was chosen with the right stick: presses keep it
     bool wantAttack_ = false;  // we want the server to be attacking target_
     bool attackSent_ = false;  // an attack request for target_ is in effect
     std::optional<uint32_t> engagedSinceMs_;  // our first attack request on target_: the give-up clock

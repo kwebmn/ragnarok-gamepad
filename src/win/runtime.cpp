@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <memory>
@@ -11,6 +12,7 @@
 
 #include "core/bytes.hpp"
 #include "core/config/config.hpp"
+#include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
 #include "core/version.hpp"
 #include "win/hooks.hpp"
@@ -19,8 +21,6 @@
 
 namespace uapad::runtime {
 namespace {
-
-constexpr size_t kMaxPendingButtons = 16;
 
 struct State {
     bool initDone = false;
@@ -32,8 +32,9 @@ struct State {
     std::unique_ptr<Session> session;
     XInputPad pad;
     VirtualMouse mouse;        // what the client currently gets from us
-    bool reportedLmb = false;  // last virtual LMB state handed to the client
-    std::vector<DIDEVICEOBJECTDATA> pendingButtons;  // for clients that read the mouse buffered
+    VirtualButton button;      // virtual LMB as the client has been told about it
+    bool loggedNullRead = false;
+    bool loggedBufferRead = false;
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
     bool ticked = false;
@@ -88,8 +89,11 @@ void fail(const char* where) {
     State& s = S();
     if (!s.failed) LOG_ERROR("internal error in %s; pass-through until the client restarts", where);
     s.failed = true;
+    // Never leave the client with a held virtual button: queue a release (handed out by onMouseData
+    // even after the failure) or, for the message channel, post it right away.
+    if (s.button.release(GetTickCount()) && s.cfg.buttons == ButtonChannel::Messages && s.hwnd)
+        PostMessageA(s.hwnd, WM_LBUTTONUP, 0, MAKELPARAM(s.mouse.x, s.mouse.y));
     s.mouse = VirtualMouse{};
-    s.pendingButtons.clear();
     s.pad.stopRumble();
 }
 
@@ -123,18 +127,9 @@ ViewInfo currentView() {
 void applyMouse(const VirtualMouse& m) {
     State& s = S();
     const bool lmb = m.active && m.lmb;
-    if (lmb != s.reportedLmb) {
-        if (s.cfg.buttons == ButtonChannel::DirectInput) {
-            DIDEVICEOBJECTDATA ev{};
-            ev.dwOfs = DIMOFS_BUTTON0;
-            ev.dwData = lmb ? 0x80 : 0x00;
-            ev.dwTimeStamp = GetTickCount();
-            if (s.pendingButtons.size() >= kMaxPendingButtons) s.pendingButtons.erase(s.pendingButtons.begin());
-            s.pendingButtons.push_back(ev);
-        } else if (s.hwnd) {
+    if (s.button.set(lmb, GetTickCount())) {
+        if (s.cfg.buttons == ButtonChannel::Messages && s.hwnd)
             PostMessageA(s.hwnd, lmb ? WM_LBUTTONDOWN : WM_LBUTTONUP, lmb ? MK_LBUTTON : 0, MAKELPARAM(m.x, m.y));
-        }
-        s.reportedLmb = lmb;
     } else if (lmb && s.cfg.buttons == ButtonChannel::Messages && s.hwnd && (m.x != s.mouse.x || m.y != s.mouse.y)) {
         PostMessageA(s.hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(m.x, m.y));
     }
@@ -246,24 +241,54 @@ void onMouseState(DWORD cb, LPVOID data) {
     });
 }
 
+namespace {
+
+// Adds our queued virtual button edges to a buffered DirectInput read.
+void deliverButtons(DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD inOut, DWORD capacity, DWORD flags) {
+    State& s = S();
+    if (s.cfg.buttons != ButtonChannel::DirectInput || !inOut || cbObjectData < sizeof(DIDEVICEOBJECTDATA)) return;
+    if (!rgdod) {  // count query (DIGDD_PEEK) or flush: our events count too
+        *inOut += DWORD(s.button.pending());
+        if (!(flags & DIGDD_PEEK)) s.button.flush();
+        return;
+    }
+    const DWORD filled = *inOut;
+    if (filled >= capacity) return;
+    const std::vector<VirtualButton::Event> events = s.button.take(capacity - filled, (flags & DIGDD_PEEK) != 0);
+    for (size_t i = 0; i < events.size(); ++i) {
+        DIDEVICEOBJECTDATA ev{};
+        ev.dwOfs = DIMOFS_BUTTON0;
+        ev.dwData = events[i].down ? 0x80 : 0x00;
+        ev.dwTimeStamp = events[i].timeMs;
+        std::memcpy(reinterpret_cast<BYTE*>(rgdod) + (size_t(filled) + i) * cbObjectData, &ev, sizeof ev);
+    }
+    *inOut = filled + DWORD(events.size());
+}
+
+}  // namespace
+
 void onMouseData(DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD inOut, DWORD capacity, DWORD flags) {
     State& s = S();
-    if (s.nData++ == 0)
-        LOG_INFO("first mouse GetDeviceData: object %lu bytes, capacity %lu, flags 0x%lx", (unsigned long)cbObjectData,
-                 (unsigned long)capacity, (unsigned long)flags);
+    ++s.nData;
+    bool& logged = rgdod ? s.loggedBufferRead : s.loggedNullRead;
+    if (!logged) {
+        logged = true;
+        LOG_INFO("mouse GetDeviceData with %s buffer: object %lu bytes, capacity %lu, flags 0x%lx",
+                 rgdod ? "a" : "a NULL (count/flush)", (unsigned long)cbObjectData, (unsigned long)capacity,
+                 (unsigned long)flags);
+    }
+    if (!s.initDone) return;
+    if (s.failed) {  // still hand out the release queued by fail(), nothing else
+        try {
+            if (GetCurrentThreadId() == s.gameThread) deliverButtons(cbObjectData, rgdod, inOut, capacity, flags);
+        } catch (...) {
+        }
+        return;
+    }
     guarded("mouse data", [&] {
         if (!onGameThread()) return;
         tick();
-        if (!rgdod || !inOut || s.pendingButtons.empty() || cbObjectData < sizeof(DIDEVICEOBJECTDATA)) return;
-        DWORD filled = *inOut;
-        size_t used = 0;
-        while (used < s.pendingButtons.size() && filled < capacity) {
-            auto* dst = reinterpret_cast<DIDEVICEOBJECTDATA*>(reinterpret_cast<BYTE*>(rgdod) + size_t(filled) * cbObjectData);
-            *dst = s.pendingButtons[used++];
-            ++filled;
-        }
-        *inOut = filled;
-        if (!(flags & DIGDD_PEEK)) s.pendingButtons.erase(s.pendingButtons.begin(), s.pendingButtons.begin() + long(used));
+        deliverButtons(cbObjectData, rgdod, inOut, capacity, flags);
     });
 }
 

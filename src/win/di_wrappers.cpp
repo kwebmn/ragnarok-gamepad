@@ -68,7 +68,10 @@ public:
     STDMETHODIMP SetEventNotification(HANDLE ev) override { return real_->SetEventNotification(ev); }
     STDMETHODIMP SetCooperativeLevel(HWND hwnd, DWORD flags) override {
         LOG_INFO("%s cooperative level 0x%lx", name(), (unsigned long)flags);
-        if (kind_ == DevKind::Mouse) runtime::setGameWindow(hwnd);
+        if (kind_ == DevKind::Mouse) {
+            runtime::setGameWindow(hwnd);
+            flags = runtime::mouseCooperativeLevel(flags);
+        }
         return real_->SetCooperativeLevel(hwnd, flags);
     }
     STDMETHODIMP GetObjectInfo(LPDIDEVICEOBJECTINSTANCEA info, DWORD obj, DWORD how) override {

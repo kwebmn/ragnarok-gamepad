@@ -12,6 +12,7 @@
 
 #include "core/bytes.hpp"
 #include "core/config/config.hpp"
+#include "core/logic/cursor_bridge.hpp"
 #include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
 #include "core/version.hpp"
@@ -34,7 +35,9 @@ struct State {
     VirtualMouse mouse;        // what the client currently gets from us
     VirtualButton button;      // virtual LMB as the client has been told about it
     bool loggedNullRead = false;
-    int loggedMouseMoves = 0;
+    CursorBridge bridge;     // drives the client's own cursor (it only reads DirectInput deltas)
+    bool lastFocused = false;
+    int loggedSteps = 0;
     bool loggedBufferRead = false;
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
@@ -183,7 +186,12 @@ void tick() {
     if (g_unseenDown.exchange(false)) s.session->onUnobserved(s.session->mapSocket(), Direction::ServerToClient);
     const PadState pad = s.pad.poll();
     logPad(pad);
-    const TickOutput out = s.session->tick(pad, currentView(), now);
+    const ViewInfo view = currentView();
+    if (view.focused != s.lastFocused) {  // the real mouse may have moved the client's cursor meanwhile
+        s.lastFocused = view.focused;
+        s.bridge.reset();
+    }
+    const TickOutput out = s.session->tick(pad, view, now);
     for (const std::string& note : out.notes) LOG_INFO("%s", note.c_str());
     for (const std::string& line : s.session->takeLog()) LOG_INFO("%s", line.c_str());
     if (s.cfg.rumble && out.rumble != Rumble::None) s.pad.rumble(out.rumble, now);
@@ -239,17 +247,35 @@ void onMouseState(DWORD cb, LPVOID data) {
     guarded("mouse state", [&] {
         if (!onGameThread()) return;
         tick();
-        if (!data || cb < sizeof(DIMOUSESTATE)) return;
+        if (!data || cb < sizeof(DIMOUSESTATE) || !s.hwnd) return;
         auto* st = static_cast<DIMOUSESTATE*>(data);
-        if (s.loggedMouseMoves < 20 && (st->lX || st->lY || st->rgbButtons[0] || st->rgbButtons[1])) {
-            ++s.loggedMouseMoves;  // proof that real mouse input reaches the client through us
-            LOG_INFO("mouse in: dx=%ld dy=%ld left=%d right=%d (virtual mouse %s)", st->lX, st->lY,
-                     st->rgbButtons[0] >> 7, st->rgbButtons[1] >> 7, s.mouse.active ? "on" : "off");
+        if (!s.cfg.mouseFreedom && !s.mouse.active) {
+            s.bridge.reset();  // the real mouse moves the client's cursor now; resync before driving it again
+            return;
         }
-        if (!s.mouse.active) return;
-        st->lX = 0;  // the real mouse must not drag the cursor away from the walking point
-        st->lY = 0;
-        if (s.cfg.buttons == ButtonChannel::DirectInput) st->rgbButtons[0] = s.mouse.lmb ? 0x80 : 0x00;
+        // Target: the walking point while the stick is used, otherwise the Windows cursor (mouse freedom).
+        POINT target{s.mouse.x, s.mouse.y};
+        if (!s.mouse.active) {
+            GetCursorPos(&target);
+            ScreenToClient(s.hwnd, &target);
+        }
+        RECT rc{};
+        GetClientRect(s.hwnd, &rc);
+        const CursorBridge::Step step = s.bridge.step(target.x, target.y, rc.right - rc.left, rc.bottom - rc.top);
+        if (s.loggedSteps < 12 || step.settling) {
+            ++s.loggedSteps;
+            LOG_INFO("cursor: target (%ld,%ld) in %ldx%ld -> dx=%ld dy=%ld%s (raw dx=%ld dy=%ld)", target.x, target.y,
+                     rc.right - rc.left, rc.bottom - rc.top, step.dx, step.dy, step.settling ? " settling" : "", st->lX,
+                     st->lY);
+        }
+        st->lX = step.dx;
+        st->lY = step.dy;
+        if (step.settling) {  // the cursor sits in the corner this frame: no clicks there
+            st->rgbButtons[0] = 0;
+            st->rgbButtons[1] = 0;
+            return;
+        }
+        if (s.mouse.active && s.cfg.buttons == ButtonChannel::DirectInput) st->rgbButtons[0] = s.mouse.lmb ? 0x80 : 0x00;
     });
 }
 
@@ -369,6 +395,14 @@ void onClose(SOCKET sock) {
 
 void onOverlappedSend(SOCKET sock) {
     guarded("overlapped send", [&] { noteUnseen(sock, true); });
+}
+
+DWORD mouseCooperativeLevel(DWORD flags) {
+    State& s = S();
+    if (!healthy() || !s.cfg.mouseFreedom || !(flags & DISCL_EXCLUSIVE)) return flags;
+    const DWORD freed = (flags & ~DWORD(DISCL_EXCLUSIVE)) | DISCL_NONEXCLUSIVE;
+    LOG_INFO("mouse freedom: cooperative level 0x%lx -> 0x%lx", (unsigned long)flags, (unsigned long)freed);
+    return freed;
 }
 
 }  // namespace uapad::runtime

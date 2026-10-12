@@ -11,6 +11,8 @@ namespace uapad::runtime {
 void init();
 bool healthy();
 void setGameWindow(HWND hwnd);
+// Mouse freedom: the cooperative level the mouse device should really get for the requested one.
+DWORD mouseCooperativeLevel(DWORD flags);
 void onMouseState(DWORD cb, LPVOID data);
 void onMouseData(DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD inOut, DWORD capacity, DWORD flags);
 void onGetCursorPos(LPPOINT p);

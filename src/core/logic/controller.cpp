@@ -298,6 +298,11 @@ void Controller::useSlot(int slot, bool repeat, const WorldState& world, uint32_
     const uint32_t target = targetAlive(world) ? target_ : 0;
     const uint32_t nearest = target != 0 ? 0 : nearestTarget(world, now);
     SlotDecision d = decideSlot(key, world, target, nearest, cfg_, now);
+    if (d.kind == SlotDecision::Kind::Approach && walking_) {
+        // The stick has the legs: no walking up against it. A held button casts once it is in range.
+        if (!repeat) deny(out, "skill " + std::to_string(d.skill) + ": out of range while walking");
+        return;
+    }
     if (d.newTarget != 0) setTarget(d.newTarget, now, out);
     switch (d.kind) {
         case SlotDecision::Kind::Deny:
@@ -342,6 +347,10 @@ void Controller::pickup(bool repeat, const WorldState& world, uint32_t now, Tick
     }
     if (bestDist <= kPickupReach) {
         out.packets.push_back(buildTakeItem(best->id));
+        return;
+    }
+    if (walking_) {  // no walking up against the stick; a held LT picks things up as we pass them
+        if (!repeat) deny(out, "item " + std::to_string(best->id) + " is out of reach while walking");
         return;
     }
     Approach ap;

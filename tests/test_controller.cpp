@@ -474,6 +474,40 @@ TEST(ctl_held_slot_waits_while_approaching) {
     CHECK_EQ(pid(pkt(o, 0)), 0x0072);
 }
 
+TEST(ctl_no_walking_up_while_the_stick_walks) {
+    Controller c(Config{});
+    WorldState w = slotWorld();
+    addMob(w, 110000001, Cell{112, 100});  // 12 cells east: beyond Fire Bolt's 9
+    PadState p = pad(kPadUp);              // F7: Fire Bolt while walking west, away from it
+    p.lx = -1.0f;
+    TickOutput o = c.tick(p, w, view(), 1000);
+    CHECK(!c.approaching());
+    CHECK(o.packets.empty());  // no walk towards it, against the stick
+    CHECK(o.rumble == Rumble::Denied);
+    CHECK_EQ(c.target(), 0u);
+    w.apply(EvSetPos{110000001, Cell{108, 100}}, 1200);  // it came within range
+    o = c.tick(p, w, view(), 1250);                     // F7 still held: the repeat casts while we walk on
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0072);
+    CHECK(o.mouse.active && o.mouse.lmb);
+}
+
+TEST(ctl_no_pickup_walk_while_the_stick_walks) {
+    Controller c(Config{});
+    WorldState w = world();
+    w.apply(EvGroundItem{4242, 909, Cell{104, 100}}, 0);  // 4 cells away
+    PadState p = padLT(0);
+    p.lx = -1.0f;
+    TickOutput o = c.tick(p, w, view(), 1000);
+    CHECK(!c.approaching());
+    CHECK(o.packets.empty());
+    CHECK(o.rumble == Rumble::Denied);
+    w.apply(EvGroundItem{4243, 909, Cell{99, 100}}, 1100);  // one right next to us
+    o = c.tick(p, w, view(), 1250);                        // LT still held: picked up on the way
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x00f5);
+}
+
 TEST(ctl_slot_throttle_is_per_slot) {
     Controller c(Config{});
     WorldState w = slotWorld();

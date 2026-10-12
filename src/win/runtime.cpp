@@ -12,14 +12,19 @@
 
 #include "core/bytes.hpp"
 #include "core/config/bindings.hpp"
-#include "core/config/settings.hpp"
 #include "core/config/config.hpp"
+#include "core/config/ini_edit.hpp"
+#include "core/config/settings.hpp"
+#include "core/i18n.hpp"
 #include "core/logic/cursor_bridge.hpp"
+#include "core/logic/mouse_gate.hpp"
 #include "core/logic/settings_menu.hpp"
 #include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
 #include "core/version.hpp"
 #include "win/client_bar.hpp"
+#include "win/client_mouse.hpp"
+#include "win/game_window.hpp"
 #include "win/hooks.hpp"
 #include "win/log.hpp"
 #include "win/overlay.hpp"
@@ -52,6 +57,16 @@ struct State {
     bool swallowMouse = false;  // mouse buttons are the menu's: while it is open and until let go after
     uint16_t prevPadButtons = 0;
     std::string bindsPath;      // uaro-pad-binds.ini
+    std::string iniPath;        // uaro-pad.ini
+    int sleepWhenOn = 10;       // background_sleep_ms to write when the menu switches the CPU saving on
+    Settings menuBefore;        // the settings as the menu found them: only what changed gets written
+    bool mouseSupported = false;  // the client's cursor and resolution can be read from its memory
+    bool loggedExact = false;
+    MouseGate gate;             // the real mouse's clicks and wheel reach the game only over it
+    MouseKeys mouseKeys;        // the middle and side buttons as F1-F9
+    bool wasForeground = false;
+    DWORD activatedAtMs = 0;    // when the game window last became the active one (0: never)
+    bool loggedLock = false;
     bool barSupported = false;  // the client's hotkey bar can be read from its memory
     bool loggedBarFail = false;
     DWORD lastBarMs = 0;
@@ -70,6 +85,9 @@ State& S() {
     static State s;
     return s;
 }
+
+// A button that goes down this soon after the game window became active is the click that activated it.
+constexpr DWORD kActivationClickMs = 300;
 
 // Hooks running off the game thread only record that the map socket carried traffic we could not
 // parse; the game thread turns that into Session::onUnobserved on its next tick.
@@ -120,6 +138,8 @@ void fail(const char* where) {
     s.pad.stopRumble();
     s.menu.close();
     overlay::hide();
+    gamewindow::releaseCursor();
+    for (const MouseKeys::KeyEvent& e : s.mouseKeys.releaseAll()) gamewindow::sendFKey(e.key, false);
 }
 
 template <class F>
@@ -220,19 +240,63 @@ std::wstring widen(const std::string& text, UINT codepage) {
 
 overlay::View menuView() {
     State& s = S();
+    const Lang lang = s.menu.lang();
     overlay::View v;
     const uint32_t id = s.session->charId();
     const std::string& name = s.session->charName();  // the server's spelling: the system code page
-    v.title = L"uaRO Pad — " + (id == 0          ? std::wstring(L"раскладка по умолчанию")
+    v.title = L"uaRO Pad — " + (id == 0          ? widen(tr(lang, Text::DefaultLayout), CP_UTF8)
                                 : !name.empty() ? widen(name, CP_ACP)
-                                                : L"персонаж " + std::to_wstring(id));
-    for (const SettingsMenu::Row& row : s.menu.rows()) {
-        v.buttons.push_back(row.hasValue ? widen(row.label, CP_UTF8) : std::wstring());
-        v.actions.push_back(widen(row.hasValue ? row.value : row.label, CP_UTF8));
-    }
+                                                : widen(tr(lang, Text::Character), CP_UTF8) + L" " + std::to_wstring(id));
+    v.tabs = {widen(s.menu.tabTitle(SettingsMenu::Tab::Buttons), CP_UTF8),
+              widen(s.menu.tabTitle(SettingsMenu::Tab::Settings), CP_UTF8)};
+    v.tab = size_t(s.menu.tab());
+    for (const SettingsMenu::Row& row : s.menu.rows())
+        v.rows.push_back(overlay::View::Row{widen(row.label, CP_UTF8), widen(row.value, CP_UTF8), !row.hasValue});
     v.selected = s.menu.selected();
-    v.help = L"↑↓ выбрать    ←→ изменить    Y — по умолчанию\nA — сохранить    B — отмена    Start — сохранить";
+    v.rowSlots = SettingsMenu::maxRowCount();
+    v.labelWidth = s.menu.tab() == SettingsMenu::Tab::Settings ? 286 : 166;  // setting names are long
+    v.help = widen(tr(lang, Text::Help), CP_UTF8);
+    v.save = widen(tr(lang, Text::Save), CP_UTF8);
+    v.cancel = widen(tr(lang, Text::Cancel), CP_UTF8);
     return v;
+}
+
+// Writes `text` to `path` through a temporary file, so a crash never leaves half a file behind.
+bool writeAtomically(const std::string& path, const std::string& text) {
+    const std::string tmp = path + ".tmp";
+    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+    f << text;
+    f.close();
+    if (!f || !MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        LOG_ERROR("could not save %s (error %lu)", path.c_str(), (unsigned long)GetLastError());
+        DeleteFileA(tmp.c_str());
+        return false;
+    }
+    return true;
+}
+
+// The Settings tab saved `after`: write what changed into uaro-pad.ini (read again first: it may have been
+// edited meanwhile) and let it work now, written or not.
+bool saveSettings(const Settings& after) {
+    State& s = S();
+    const std::vector<IniEdit> edits = settingsEdits(s.menuBefore, after, s.sleepWhenOn);
+    if (edits.empty()) return true;
+    const bool written = writeAtomically(s.iniPath, applyIniEdits(readFile(s.iniPath), edits));
+    if (written) LOG_INFO("uaro-pad.ini: %u setting(s) saved", unsigned(edits.size()));
+    const Config old = s.cfg;
+    applySettings(after, s.sleepWhenOn, s.cfg);
+    if (s.cfg.backgroundSleepMs > 0) s.sleepWhenOn = s.cfg.backgroundSleepMs;
+    s.session->setMark(s.cfg.mark);
+    if (old.borderless != s.cfg.borderless) {
+        const bool ok = gamewindow::setBorderless(s.hwnd, s.cfg.borderless, s.cfg.position);
+        LOG_INFO("borderless window %s%s", s.cfg.borderless ? "on" : "off", ok ? "" : ": not possible now");
+    }
+    LOG_INFO("settings: language %s, cursor lock %d, activating click %s, mouse keys %s/%s/%s, CPU sleep %d ms, "
+             "rumble %d, mark %d",
+             langToken(s.cfg.lang), s.cfg.mouseLock ? 1 : 0, s.cfg.focusClick ? "to the game" : "kept out",
+             fKeyToken(s.cfg.mouseKeys[0]).c_str(), fKeyToken(s.cfg.mouseKeys[1]).c_str(),
+             fKeyToken(s.cfg.mouseKeys[2]).c_str(), s.cfg.backgroundSleepMs, s.cfg.rumble ? 1 : 0, s.cfg.mark ? 1 : 0);
+    return written;
 }
 
 // Writes this character's layout into uaro-pad-binds.ini. The file is read again first: another client may
@@ -243,16 +307,7 @@ bool saveLayouts() {
     const Profiles& mine = s.session->profiles();
     const Bindings saved = id ? mine.forCharacter(id) : mine.fallback;
     const Profiles merged = withLayout(parseProfiles(readFile(s.bindsPath)), id, s.session->charName(), saved);
-    const std::string tmp = s.bindsPath + ".tmp";
-    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-    f << formatProfiles(merged);
-    f.close();
-    if (!f || !MoveFileExA(tmp.c_str(), s.bindsPath.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        LOG_ERROR("could not save %s (error %lu); the layout works until the client closes",
-                  s.bindsPath.c_str(), (unsigned long)GetLastError());
-        DeleteFileA(tmp.c_str());
-        return false;
-    }
+    if (!writeAtomically(s.bindsPath, formatProfiles(merged))) return false;  // the layout works until the client closes
     s.session->setProfiles(merged);  // with whatever other clients saved
     return true;
 }
@@ -266,14 +321,18 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
     s.prevPadButtons = buttons;
     if (!s.menu.isOpen()) {
         if (!(down & kPadStart) || !view.focused || !s.hwnd) return false;
-        s.menu.open(s.session->controller().bindings(), settingsFrom(s.cfg), s.session->world().clientBarNames(),
-                    buttons, now, pad.lx, pad.ly);
+        s.menuBefore = settingsFrom(s.cfg);
+        s.menu.open(s.session->controller().bindings(), s.menuBefore, s.session->world().clientBarNames(), buttons,
+                    now, pad.lx, pad.ly);
         s.session->askOwnName(now);
         LOG_INFO("settings menu opened");
     }
     SettingsMenu::Result result = view.focused ? s.menu.update(pad, now) : SettingsMenu::Result::Cancel;
     for (const overlay::MouseEvent& e : overlay::takeClicks()) {
         switch (e.click) {
+            case overlay::Click::Tab:
+                s.menu.showTab(e.row == 0 ? SettingsMenu::Tab::Buttons : SettingsMenu::Tab::Settings);
+                break;
             case overlay::Click::Select:
                 s.menu.select(e.row);
                 if (e.row == s.menu.rowCount() - 1) s.menu.resetTab();
@@ -294,7 +353,9 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
     }
     if (result == SettingsMenu::Result::Save) {
         s.session->saveBindings(s.menu.bindings());
-        if (!saveLayouts() && s.cfg.rumble) s.pad.rumble(Rumble::Denied, now);
+        const bool layouts = saveLayouts();
+        const bool settings = saveSettings(s.menu.settings());
+        if ((!layouts || !settings) && s.cfg.rumble) s.pad.rumble(Rumble::Denied, now);
     }
     if (result != SettingsMenu::Result::None) {
         s.menu.close();
@@ -307,6 +368,36 @@ bool runMenu(const PadState& pad, const ViewInfo& view, DWORD now) {
         LOG_ERROR("could not create the settings window");
     }
     return true;
+}
+
+// The game window coming to the front or going behind; the middle and side mouse buttons as F-keys; the
+// cursor kept inside the window.
+void followTheMouse(bool foreground, DWORD now) {
+    State& s = S();
+    if (foreground && !s.wasForeground) s.activatedAtMs = now ? now : 1;
+    if (!foreground && s.wasForeground) s.gate.reset();
+    s.wasForeground = foreground;
+    if (!s.hwnd) return;
+    const bool keysWanted = s.cfg.mouseKeys[0] || s.cfg.mouseKeys[1] || s.cfg.mouseKeys[2];
+    uint8_t held = 0;
+    if (keysWanted) {
+        if (GetAsyncKeyState(VK_MBUTTON) & 0x8000) held |= 1;
+        if (GetAsyncKeyState(VK_XBUTTON1) & 0x8000) held |= 2;
+        if (GetAsyncKeyState(VK_XBUTTON2) & 0x8000) held |= 4;
+    }
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    const bool allowed = foreground && !s.menu.isOpen() && gamewindow::cursorOverGame(s.hwnd, cursor);
+    for (const MouseKeys::KeyEvent& e : s.mouseKeys.update(held, s.cfg.mouseKeys, allowed, foreground)) {
+        gamewindow::sendFKey(e.key, e.down);
+        LOG_DEBUG("mouse button: F%d %s", e.key, e.down ? "down" : "up");
+    }
+    const bool lock = s.cfg.mouseLock && s.cfg.mouseFreedom && foreground && !IsIconic(s.hwnd);
+    gamewindow::lockCursor(s.hwnd, lock);
+    if (lock != s.loggedLock) {
+        s.loggedLock = lock;
+        LOG_INFO(lock ? "cursor kept inside the game window" : "cursor free to leave the game window");
+    }
 }
 
 void tick() {
@@ -342,6 +433,7 @@ void tick() {
         s.lastFocused = view.focused;
         s.bridge.reset();
     }
+    followTheMouse(view.focused, now);
     view.paused = runMenu(pad, view, now);
     const TickOutput out = s.session->tick(pad, view, now);
     for (const std::string& note : out.notes) LOG_INFO("%s", note.c_str());
@@ -370,11 +462,16 @@ void init() {
         s.session = std::make_unique<Session>(s.cfg);
         if (!s.cfg.enabled) LOG_INFO("starts switched off ([general] enabled = 0); press Back to switch on");
         s.bindsPath = dir + "uaro-pad-binds.ini";
+        s.iniPath = dir + "uaro-pad.ini";
+        if (s.cfg.backgroundSleepMs > 0) s.sleepWhenOn = s.cfg.backgroundSleepMs;
         const Profiles layouts = parseProfiles(readFile(s.bindsPath));
         s.session->setProfiles(layouts);
         LOG_INFO("layouts: %u character(s) in uaro-pad-binds.ini", unsigned(layouts.characters.size()));
         hooks::install();
         s.barSupported = clientbar::supported();
+        s.mouseSupported = clientmouse::supported();
+        LOG_INFO(s.mouseSupported ? "game cursor: read from the client's memory"
+                                  : "game cursor: unknown client build; its position is estimated");
         LOG_INFO(s.barSupported ? "hotkey bar: read from the client's memory"
                                 : "hotkey bar: unknown client build; slots only from the server's 0x02b9 / 0x02ba");
         if (s.pad.load())
@@ -398,6 +495,15 @@ void setGameWindow(HWND hwnd) {
     LOG_INFO("game window %p: style 0x%08lx, window %ldx%ld at (%ld,%ld), client %ldx%ld", static_cast<void*>(hwnd),
              (unsigned long)GetWindowLongA(hwnd, GWL_STYLE), w.right - w.left, w.bottom - w.top, w.left, w.top,
              c.right - c.left, c.bottom - c.top);
+    if (!healthy()) return;
+    if (s.cfg.mouseFreedom) gamewindow::subclass(hwnd);  // the normal cursors over the title bar and borders
+    if (s.cfg.borderless) {
+        const bool ok = gamewindow::setBorderless(hwnd, true, s.cfg.position);
+        RECT b{};
+        GetWindowRect(hwnd, &b);
+        LOG_INFO(ok ? "borderless window at (%ld,%ld), %ldx%ld" : "borderless window not possible (%ld,%ld %ldx%ld)",
+                 b.left, b.top, b.right - b.left, b.bottom - b.top);
+    }
 }
 
 void onMouseState(DWORD cb, LPVOID data) {
@@ -408,13 +514,25 @@ void onMouseState(DWORD cb, LPVOID data) {
         tick();
         if (!data || cb < sizeof(DIMOUSESTATE) || !s.hwnd) return;
         auto* st = static_cast<DIMOUSESTATE*>(data);
-        // The device's own button, before we put the virtual one in: a click means the player took over.
-        const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;
-        const bool anyButton = ((st->rgbButtons[0] | st->rgbButtons[1] | st->rgbButtons[2] | st->rgbButtons[3]) & 0x80) != 0;
+        POINT screen{};
+        GetCursorPos(&screen);
+        uint8_t raw = 0;  // the device's own buttons, before anything of ours
+        for (int i = 0; i < 4; ++i)
+            if (st->rgbButtons[i] & 0x80) raw |= uint8_t(1u << i);
+        // With mouse freedom DirectInput reports the mouse wherever the cursor is while the game is active:
+        // only clicks and the wheel over the game window reach it, and not the click that activated it.
+        if (s.cfg.mouseFreedom) {
+            const bool over = gamewindow::cursorOverGame(s.hwnd, screen);
+            const bool activating = s.activatedAtMs != 0 && GetTickCount() - s.activatedAtMs < kActivationClickMs;
+            const MouseGate::Out pass = s.gate.filter(raw, over, activating, s.cfg.focusClick);
+            for (int i = 0; i < 4; ++i) st->rgbButtons[i] = (pass.buttons >> i) & 1 ? 0x80 : 0x00;
+            if (!pass.wheel) st->lZ = 0;
+        }
+        const bool realLmb = (st->rgbButtons[0] & 0x80) != 0;  // a click here means the player took over
         // Clicks are the menu's while it is open, and so is the click that closed it until the button is let go.
         if (s.menu.isOpen())
             s.swallowMouse = true;
-        else if (s.swallowMouse && !anyButton)
+        else if (s.swallowMouse && raw == 0)
             s.swallowMouse = false;
         if (s.swallowMouse)
             std::memset(st->rgbButtons, 0, sizeof st->rgbButtons);
@@ -428,17 +546,25 @@ void onMouseState(DWORD cb, LPVOID data) {
         // Target: the walking point while the stick is used, otherwise the Windows cursor (mouse freedom).
         POINT target{s.mouse.x, s.mouse.y};
         if (!s.mouse.active) {
-            GetCursorPos(&target);
+            target = screen;
             ScreenToClient(s.hwnd, &target);
         }
         RECT rc{};
         GetClientRect(s.hwnd, &rc);
-        const CursorBridge::Step step = s.bridge.step(target.x, target.y, rc.right - rc.left, rc.bottom - rc.top);
+        const int w = rc.right - rc.left;
+        const int h = rc.bottom - rc.top;
+        int cx = 0, cy = 0, gw = 0, gh = 0;
+        const bool exact = s.mouseSupported && clientmouse::read(cx, cy, gw, gh);
+        if (exact && !s.loggedExact) {
+            s.loggedExact = true;
+            LOG_INFO("game cursor at (%d,%d) in a %dx%d game, window %dx%d", cx, cy, gw, gh, w, h);
+        }
+        const CursorBridge::Step step =
+            exact ? s.bridge.stepExact(target.x, target.y, w, h, gw, gh, cx, cy) : s.bridge.step(target.x, target.y, w, h);
         if (s.loggedSteps < 12 || step.settling) {
             ++s.loggedSteps;
-            LOG_INFO("cursor: target (%ld,%ld) in %ldx%ld -> dx=%ld dy=%ld%s (raw dx=%ld dy=%ld)", target.x, target.y,
-                     rc.right - rc.left, rc.bottom - rc.top, step.dx, step.dy, step.settling ? " settling" : "", st->lX,
-                     st->lY);
+            LOG_INFO("cursor: target (%ld,%ld) in %dx%d -> dx=%ld dy=%ld%s%s (raw dx=%ld dy=%ld)", target.x, target.y, w,
+                     h, step.dx, step.dy, exact ? " exact" : "", step.settling ? " settling" : "", st->lX, st->lY);
         }
         st->lX = step.dx;
         st->lY = step.dy;
@@ -517,6 +643,16 @@ void onMessagePump() {
     ++s.nPump;
     guarded("message pump", [&] {
         if (onGameThread() && (!s.ticked || GetTickCount() - s.lastTickMs >= 50)) tick();
+    });
+}
+
+void onQueueEmpty() {
+    State& s = S();
+    guarded("idle", [&] {
+        if (!s.hwnd || !onGameThread()) return;
+        const int ms = backgroundSleepMs(true, GetForegroundWindow() == s.hwnd, IsIconic(s.hwnd) != 0,
+                                         s.cfg.backgroundSleepMs);
+        if (ms > 0) Sleep(DWORD(ms));  // the client spins at full speed even behind other windows
     });
 }
 

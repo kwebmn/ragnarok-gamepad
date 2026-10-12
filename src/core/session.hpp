@@ -38,6 +38,7 @@ public:
     std::vector<Bytes> takeInjectable(uint32_t nowMs);
     bool canInject() const;
     void markInjectBroken();
+    void setMark(bool on) { mark_ = on; }  // [aim] mark, changed from the menu
     // Appends the queued client-only packets (the "!" over a new target) to the `n` bytes the client is
     // about to receive on `s` in a buffer of `cap` bytes: only on the map socket, only while the server
     // stream is understood and stands at a packet boundary, only whole packets. Returns the bytes added.

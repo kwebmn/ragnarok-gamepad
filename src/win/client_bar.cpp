@@ -8,8 +8,14 @@
 #include <utility>
 #include <vector>
 
+#include "win/client_memory.hpp"
+
 namespace uapad::clientbar {
 namespace {
+
+using clientmem::load;
+using clientmem::matches;
+using clientmem::readable;
 
 // uaRO.exe / uaRO-1.1.exe: the CSession object and the parts of it we read.
 constexpr uintptr_t kSession = 0x771148;
@@ -30,27 +36,6 @@ const uint8_t kSigItems[] = {0x55, 0x8b, 0xec, 0x51, 0x8b, 0x81, 0x20, 0x0f, 0x0
 const uint8_t kSigLevel[] = {0x55, 0x8b, 0xec, 0x8b, 0x45, 0x0c, 0x8b, 0x55, 0x08, 0x89, 0x94, 0x81, 0xc4, 0x04, 0x00, 0x00};
 // The shortcut window asking for a slot name: mov ecx, 0x771148; call GetShortcutName — the session's address.
 const uint8_t kSigSession[] = {0xb9, 0x48, 0x11, 0x77, 0x00, 0xe8, 0x1e, 0x94, 0x1b, 0x00};
-
-bool readable(uintptr_t p, size_t n) {
-    if (p == 0 || n == 0 || p + n < p) return false;
-    const DWORD kRead = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
-                        PAGE_EXECUTE_WRITECOPY;
-    for (uintptr_t at = p; at < p + n;) {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<LPCVOID>(at), &mbi, sizeof mbi) == 0) return false;
-        if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) || !(mbi.Protect & kRead))
-            return false;
-        at = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-    }
-    return true;
-}
-
-template <class T>
-bool load(uintptr_t p, T& out) {
-    if (!readable(p, sizeof(T))) return false;
-    std::memcpy(&out, reinterpret_cast<const void*>(p), sizeof(T));
-    return true;
-}
 
 // An MSVC 6 std::string: its c_str pointer at +4, its length at +8.
 bool loadString(uintptr_t obj, std::string& out) {
@@ -76,10 +61,6 @@ std::string toUtf8(const std::string& acp) {
     std::string utf8(size_t(n), '\0');
     WideCharToMultiByte(CP_UTF8, 0, wide.data(), wn, &utf8[0], n, nullptr, nullptr);
     return utf8;
-}
-
-bool matches(const uint8_t* sig, size_t n, uintptr_t at) {
-    return readable(at, n) && std::memcmp(reinterpret_cast<const void*>(at), sig, n) == 0;
 }
 
 // One pass over the client's inventory list: each identified item name with the inventory index of its

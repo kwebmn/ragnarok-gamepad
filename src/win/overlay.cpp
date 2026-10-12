@@ -5,13 +5,13 @@
 namespace uapad::overlay {
 namespace {
 
-constexpr int kWidth = 560;
+constexpr int kWidth = 600;
 constexpr int kHeader = 54;
+constexpr int kTabs = 42;  // the tab strip under the title
 constexpr int kRow = 32;
 constexpr int kFooter = 104;
-constexpr int kButtonColumn = 24;
-constexpr int kActionColumn = 190;
-constexpr int kArrow = 28;  // the clickable ◄ / ► boxes at both ends of the action column
+constexpr int kLeft = 24;   // where the labels start
+constexpr int kArrow = 28;  // the clickable ◄ / ► boxes at both ends of the value column
 constexpr COLORREF kBack = RGB(28, 32, 40);
 constexpr COLORREF kLine = RGB(70, 80, 96);
 constexpr COLORREF kText = RGB(222, 226, 232);
@@ -29,16 +29,26 @@ int g_cursorShows = 0;  // ShowCursor(TRUE) calls to undo when the menu goes awa
 bool g_shown = false;   // the menu wants the window on screen (the system may hide it with the game)
 bool g_broken = false;  // creating the window failed once: do not retry every frame
 
-int heightFor(const View& v) { return kHeader + int(v.actions.size()) * kRow + kFooter; }
+size_t slots(const View& v) { return v.rowSlots > v.rows.size() ? v.rowSlots : v.rows.size(); }
+int rowsTop() { return kHeader + kTabs; }
+int footerTop(const View& v) { return rowsTop() + int(slots(v)) * kRow; }
+int heightFor(const View& v) { return footerTop(v) + kFooter; }
+int valueColumn(const View& v) { return kLeft + v.labelWidth; }
+
+RECT tabBox(const View& v, size_t i) {
+    const int n = v.tabs.empty() ? 1 : int(v.tabs.size());
+    const int w = (kWidth - 32) / n;
+    return RECT{16 + int(i) * w, kHeader, 16 + int(i + 1) * w - 6, kHeader + kTabs - 8};
+}
 
 RECT saveBox(const View& v) {
-    const int y = kHeader + int(v.actions.size()) * kRow + 60;
-    return RECT{kWidth - 260, y, kWidth - 140, y + 34};
+    const int y = footerTop(v) + 60;
+    return RECT{kWidth - 300, y, kWidth - 160, y + 34};
 }
 
 RECT cancelBox(const View& v) {
     const RECT s = saveBox(v);
-    return RECT{s.right + 12, s.top, s.right + 132, s.bottom};
+    return RECT{s.right + 12, s.top, s.right + 152, s.bottom};
 }
 
 void text(HDC dc, const std::wstring& s, RECT r, COLORREF color, UINT flags) {
@@ -71,38 +81,44 @@ void paint(HWND hwnd) {
     frame(dc, all, kLine);
 
     HGDIOBJ oldFont = SelectObject(dc, g_bold);
-    text(dc, g_view.title, RECT{kButtonColumn, 0, kWidth - 16, kHeader}, kText, DT_LEFT | DT_VCENTER);
+    text(dc, g_view.title, RECT{kLeft, 0, kWidth - 16, kHeader}, kText, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
     SelectObject(dc, g_font);
-    for (size_t i = 0; i < g_view.actions.size(); ++i) {
-        const int top = kHeader + int(i) * kRow;
+    for (size_t i = 0; i < g_view.tabs.size(); ++i) {
+        const RECT box = tabBox(g_view, i);
+        const bool shown = i == g_view.tab;
+        if (shown) fill(dc, box, kPick);
+        frame(dc, box, kLine);
+        text(dc, g_view.tabs[i], box, shown ? kAccent : kDim, DT_CENTER | DT_VCENTER);
+    }
+    const int values = valueColumn(g_view);
+    for (size_t i = 0; i < g_view.rows.size(); ++i) {
+        const View::Row& row = g_view.rows[i];
+        const int top = rowsTop() + int(i) * kRow;
         const bool picked = i == g_view.selected;
         if (picked) fill(dc, RECT{1, top, kWidth - 1, top + kRow}, kPick);
-        const std::wstring& button = i < g_view.buttons.size() ? g_view.buttons[i] : std::wstring();
-        if (button.empty()) {  // "reset everything"
-            text(dc, g_view.actions[i], RECT{kButtonColumn, top, kWidth - 16, top + kRow}, picked ? kAccent : kDim,
-                 DT_LEFT | DT_VCENTER);
+        if (row.command) {  // "reset all"
+            text(dc, row.label, RECT{kLeft, top, kWidth - 16, top + kRow}, picked ? kAccent : kDim, DT_LEFT | DT_VCENTER);
             continue;
         }
-        text(dc, button, RECT{kButtonColumn, top, kActionColumn - 8, top + kRow}, picked ? kAccent : kText,
-             DT_LEFT | DT_VCENTER);
-        text(dc, L"◄", RECT{kActionColumn, top, kActionColumn + kArrow, top + kRow}, picked ? kAccent : kDim,
-             DT_CENTER | DT_VCENTER);
-        text(dc, g_view.actions[i], RECT{kActionColumn + kArrow + 6, top, kWidth - kArrow - 22, top + kRow}, kText,
+        text(dc, row.label, RECT{kLeft, top, values - 8, top + kRow}, picked ? kAccent : kText,
+             DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+        text(dc, L"◄", RECT{values, top, values + kArrow, top + kRow}, picked ? kAccent : kDim, DT_CENTER | DT_VCENTER);
+        text(dc, row.value, RECT{values + kArrow + 6, top, kWidth - kArrow - 22, top + kRow}, kText,
              DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
         text(dc, L"►", RECT{kWidth - kArrow - 16, top, kWidth - 16, top + kRow}, picked ? kAccent : kDim,
              DT_CENTER | DT_VCENTER);
     }
-    const int footer = kHeader + int(g_view.actions.size()) * kRow;
-    RECT help{kButtonColumn, footer + 6, kWidth - 16, footer + 54};
+    const int footer = footerTop(g_view);
+    RECT help{kLeft, footer + 6, kWidth - 16, footer + 54};
     SetTextColor(dc, kDim);
     DrawTextW(dc, g_view.help.c_str(), int(g_view.help.size()), &help, DT_LEFT | DT_NOPREFIX | DT_WORDBREAK);
     const RECT save = saveBox(g_view);
     const RECT cancel = cancelBox(g_view);
     fill(dc, save, kPick);
     frame(dc, save, kLine);
-    text(dc, L"Сохранить", save, kText, DT_CENTER | DT_VCENTER);
+    text(dc, g_view.save, save, kText, DT_CENTER | DT_VCENTER);
     frame(dc, cancel, kLine);
-    text(dc, L"Отмена", cancel, kText, DT_CENTER | DT_VCENTER);
+    text(dc, g_view.cancel, cancel, kText, DT_CENTER | DT_VCENTER);
 
     BitBlt(screen, 0, 0, all.right, all.bottom, dc, 0, 0, SRCCOPY);
     SelectObject(dc, oldFont);
@@ -124,13 +140,21 @@ void click(int x, int y) {
         g_clicks.push_back(MouseEvent{Click::Cancel, 0});
         return;
     }
-    if (y < kHeader) return;
-    const size_t row = size_t((y - kHeader) / kRow);
-    if (row >= g_view.actions.size()) return;
-    const bool buttonRow = row < g_view.buttons.size() && !g_view.buttons[row].empty();
-    if (buttonRow && x >= kActionColumn && x < kActionColumn + kArrow)
+    for (size_t i = 0; i < g_view.tabs.size(); ++i) {
+        const RECT box = tabBox(g_view, i);
+        if (PtInRect(&box, p)) {
+            g_clicks.push_back(MouseEvent{Click::Tab, i});
+            return;
+        }
+    }
+    if (y < rowsTop()) return;
+    const size_t row = size_t((y - rowsTop()) / kRow);
+    if (row >= g_view.rows.size()) return;
+    const bool valueRow = !g_view.rows[row].command;
+    const int values = valueColumn(g_view);
+    if (valueRow && x >= values && x < values + kArrow)
         g_clicks.push_back(MouseEvent{Click::Previous, row});
-    else if (buttonRow && x >= kWidth - kArrow - 16)
+    else if (valueRow && x >= kWidth - kArrow - 16)
         g_clicks.push_back(MouseEvent{Click::Next, row});
     else
         g_clicks.push_back(MouseEvent{Click::Select, row});

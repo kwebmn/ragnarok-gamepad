@@ -265,6 +265,17 @@ TEST(session_mark_off_in_config) {
     CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 110), 0u);  // and no "!"
 }
 
+TEST(session_mark_switched_off_from_the_menu) {
+    Session s{Config{}};
+    s.setMark(false);
+    connect(s);
+    TickOutput o = s.tick(pressA(), kView, 100);
+    CHECK_EQ(o.mark, 110000001u);
+    CHECK_EQ(s.takeInjectable(100).size(), 1u);  // the attack only: no name request
+    uint8_t buf[64] = {0};
+    CHECK_EQ(s.appendForClient(kMap, buf, 0, sizeof buf, 110), 0u);
+}
+
 TEST(session_mark_dropped_with_the_connection_or_a_desync) {
     Session s{Config{}};
     connect(s);

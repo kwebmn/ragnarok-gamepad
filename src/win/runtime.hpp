@@ -17,6 +17,8 @@ void onMouseState(DWORD cb, LPVOID data);
 void onMouseData(DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD inOut, DWORD capacity, DWORD flags);
 void onGetCursorPos(LPPOINT p);
 void onMessagePump();
+// The client's PeekMessageA found no message: while the game is behind other windows, a short sleep.
+void onQueueEmpty();
 void onRecv(SOCKET sock, const char* buf, int n);
 // Right after onRecv: appends client-only packets (the "!" over a new target) to the `n` received bytes
 // in `buf` of `cap` bytes. Returns how many bytes it added; the client is told n + that many.

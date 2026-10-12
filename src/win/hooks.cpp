@@ -54,7 +54,9 @@ BOOL WINAPI h_getcursorpos(LPPOINT p) {
 
 BOOL WINAPI h_peekmessage(LPMSG msg, HWND hwnd, UINT first, UINT last, UINT remove) {
     runtime::onMessagePump();
-    return o_peekmessage(msg, hwnd, first, last, remove);
+    const BOOL got = o_peekmessage(msg, hwnd, first, last, remove);
+    if (!got) runtime::onQueueEmpty();
+    return got;
 }
 
 template <class T>

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "win/di_wrappers.hpp"
+#include "win/game_window.hpp"
 #include "win/log.hpp"
 #include "win/runtime.hpp"
 
@@ -60,6 +61,8 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
         modulePath("dinput8.dll", g_dinput8Before);
         systemDirectInputCreateA();
         modulePath("dinput8.dll", g_dinput8After);
+    } else if (reason == DLL_PROCESS_DETACH) {
+        uapad::gamewindow::releaseCursor();  // the cursor must not stay confined to a window that is gone
     }
     return TRUE;
 }

@@ -9,7 +9,7 @@ version=$(sed -n 's/.*return "\([0-9.]*\)".*/\1/p' src/core/version.cpp)
 mkdir -p dist/out
 out="dist/out/uaro-pad-${version}.zip"
 rm -f "$out"
-files=(build-win/dinput.dll dist/uaro-pad.ini dist/README.ru.md)
+files=(build-win/dinput.dll dist/uaro-pad.ini dist/README.md dist/README.uk.md dist/README.ru.md)
 for f in "${files[@]}"; do
     # The zipfile CLI silently skips missing paths, so check them first.
     [ -f "$f" ] || { echo "FAIL: missing $f"; exit 1; }

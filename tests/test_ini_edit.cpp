@@ -1,5 +1,9 @@
+#include <fstream>
+#include <sstream>
+
 #include "core/config/config.hpp"
 #include "core/config/ini_edit.hpp"
+#include "core/config/settings.hpp"
 #include "test.hpp"
 
 using namespace uapad;
@@ -49,4 +53,46 @@ TEST(ini_edit_reads_lines_the_way_the_parser_does) {
 
 TEST(config_reads_a_file_saved_with_a_bom) {
     CHECK(!parseConfig("\xEF\xBB\xBF[general]\nenabled = 0\n").enabled);
+}
+
+namespace {
+
+std::string shippedIni() {
+    std::ifstream f(std::string(UAPAD_SOURCE_DIR) + "/dist/uaro-pad.ini", std::ios::binary);
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+}  // namespace
+
+TEST(shipped_ini_holds_the_defaults) {
+    const std::string text = shippedIni();
+    CHECK(!text.empty());
+    const Config c = parseConfig(text);
+    const Config d;
+    CHECK(c.enabled == d.enabled && c.logLevel == d.logLevel && c.deadzone == d.deadzone);
+    CHECK(c.walkRadius == d.walkRadius && c.press == d.press && c.buttons == d.buttons && c.mouseFreedom == d.mouseFreedom);
+    CHECK(c.giveUpSeconds == d.giveUpSeconds && c.blacklistSeconds == d.blacklistSeconds);
+    CHECK(c.attackIntervalMs == d.attackIntervalMs && c.groundSelf == d.groundSelf && c.traps == d.traps);
+    CHECK(c.repeatMs == d.repeatMs && c.position.kind == d.position.kind);
+    CHECK(settingsFrom(c) == defaultSettings());
+    // Every key of the Settings tab is in the file, so the menu only ever changes a value in place.
+    Settings all = defaultSettings();
+    for (size_t i = 0; i < kSettingRows; ++i) all = changeSetting(all, SettingRow(i), +1);
+    const std::vector<IniEdit> edits = settingsEdits(defaultSettings(), all, 10);
+    CHECK_EQ(edits.size(), kSettingRows);
+    const std::string edited = applyIniEdits(text, edits);
+    CHECK(settingsFrom(parseConfig(edited)) == all);
+    size_t lines = 0, changed = 0;
+    for (size_t a = 0, b = 0; a < text.size() && b < edited.size(); ++lines) {
+        const size_t ea = text.find('\n', a);
+        const size_t eb = edited.find('\n', b);
+        if (text.substr(a, ea - a) != edited.substr(b, eb - b)) ++changed;
+        if (ea == std::string::npos || eb == std::string::npos) break;
+        a = ea + 1;
+        b = eb + 1;
+    }
+    CHECK_EQ(changed, kSettingRows);
+    CHECK(lines > 30);
 }

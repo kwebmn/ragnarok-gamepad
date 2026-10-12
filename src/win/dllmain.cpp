@@ -11,6 +11,15 @@
 
 namespace {
 
+// Where dinput8.dll came from before and after we loaded the system dinput.dll at process start.
+// ROExt ships as dinput8.dll and is pulled in by the system dinput.dll from the client folder.
+char g_dinput8Before[MAX_PATH] = "not loaded";
+char g_dinput8After[MAX_PATH] = "not loaded";
+
+void modulePath(const char* name, char* out) {
+    if (HMODULE m = GetModuleHandleA(name)) GetModuleFileNameA(m, out, MAX_PATH);
+}
+
 using DirectInputCreateA_t = HRESULT(WINAPI*)(HINSTANCE, DWORD, LPDIRECTINPUTA*, LPUNKNOWN);
 
 // The real dinput.dll from the system folder (a 32-bit process on 64-bit Windows gets SysWOW64).
@@ -31,6 +40,7 @@ DirectInputCreateA_t systemDirectInputCreateA() {
 // Exported as DirectInputCreateA (see dinput.def): the only DINPUT.dll import of uaRO-1.1.exe.
 extern "C" HRESULT WINAPI Proxy_DirectInputCreateA(HINSTANCE inst, DWORD version, LPDIRECTINPUTA* out, LPUNKNOWN outer) {
     uapad::runtime::init();
+    LOG_INFO("dinput8.dll at process start: %s; after the system dinput.dll: %s", g_dinput8Before, g_dinput8After);
     const DirectInputCreateA_t create = systemDirectInputCreateA();
     if (!create) {
         LOG_ERROR("system dinput.dll could not be loaded");
@@ -43,6 +53,13 @@ extern "C" HRESULT WINAPI Proxy_DirectInputCreateA(HINSTANCE inst, DWORD version
 }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
-    if (reason == DLL_PROCESS_ATTACH) DisableThreadLibraryCalls(inst);
+    if (reason == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(inst);
+        // Load the system dinput.dll now, as the loader would without us. It pulls in dinput8.dll
+        // (ROExt in the uaRO client), whose hooks must be in place before the game window exists.
+        modulePath("dinput8.dll", g_dinput8Before);
+        systemDirectInputCreateA();
+        modulePath("dinput8.dll", g_dinput8After);
+    }
     return TRUE;
 }

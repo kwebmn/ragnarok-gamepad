@@ -34,6 +34,7 @@ struct State {
     VirtualMouse mouse;        // what the client currently gets from us
     VirtualButton button;      // virtual LMB as the client has been told about it
     bool loggedNullRead = false;
+    int loggedMouseMoves = 0;
     bool loggedBufferRead = false;
     bool loggedConnected = false;
     uint16_t loggedButtons = 0;
@@ -224,7 +225,12 @@ void setGameWindow(HWND hwnd) {
     State& s = S();
     if (s.hwnd == hwnd) return;
     s.hwnd = hwnd;
-    LOG_INFO("game window %p", static_cast<void*>(hwnd));
+    RECT w{}, c{};
+    GetWindowRect(hwnd, &w);
+    GetClientRect(hwnd, &c);
+    LOG_INFO("game window %p: style 0x%08lx, window %ldx%ld at (%ld,%ld), client %ldx%ld", static_cast<void*>(hwnd),
+             (unsigned long)GetWindowLongA(hwnd, GWL_STYLE), w.right - w.left, w.bottom - w.top, w.left, w.top,
+             c.right - c.left, c.bottom - c.top);
 }
 
 void onMouseState(DWORD cb, LPVOID data) {
@@ -233,8 +239,14 @@ void onMouseState(DWORD cb, LPVOID data) {
     guarded("mouse state", [&] {
         if (!onGameThread()) return;
         tick();
-        if (!s.mouse.active || !data || cb < sizeof(DIMOUSESTATE)) return;
+        if (!data || cb < sizeof(DIMOUSESTATE)) return;
         auto* st = static_cast<DIMOUSESTATE*>(data);
+        if (s.loggedMouseMoves < 20 && (st->lX || st->lY || st->rgbButtons[0] || st->rgbButtons[1])) {
+            ++s.loggedMouseMoves;  // proof that real mouse input reaches the client through us
+            LOG_INFO("mouse in: dx=%ld dy=%ld left=%d right=%d (virtual mouse %s)", st->lX, st->lY,
+                     st->rgbButtons[0] >> 7, st->rgbButtons[1] >> 7, s.mouse.active ? "on" : "off");
+        }
+        if (!s.mouse.active) return;
         st->lX = 0;  // the real mouse must not drag the cursor away from the walking point
         st->lY = 0;
         if (s.cfg.buttons == ButtonChannel::DirectInput) st->rgbButtons[0] = s.mouse.lmb ? 0x80 : 0x00;

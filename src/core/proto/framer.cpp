@@ -11,6 +11,8 @@ constexpr size_t kMaxPacket = 0x8000;
 StreamFramer::StreamFramer(Direction dir, size_t rawPrefix) : dir_(dir), prefixLeft_(rawPrefix) {}
 
 int StreamFramer::lengthOf(uint16_t id) const {
+    // clif.c lists 0x0000 as 10 bytes, but nobody sends it: zero runs mean we lost the stream.
+    if (id == 0) return 0;
     return dir_ == Direction::ServerToClient ? s2cLength(id) : c2sLength(id);
 }
 

@@ -21,7 +21,7 @@ public:
     bool feed(const uint8_t* data, size_t n, std::vector<Bytes>& out);
 
     bool desynced() const { return desynced_; }
-    bool atBoundary() const { return buf_.empty() && prefixLeft_ == 0; }
+    bool atBoundary() const { return !desynced_ && buf_.empty() && prefixLeft_ == 0; }
     const Bytes& prefix() const { return prefix_; }
     uint16_t badId() const { return badId_; }
 

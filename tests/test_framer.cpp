@@ -98,3 +98,13 @@ TEST(framer_client_direction_uses_client_table) {
     CHECK_EQ(out.size(), 2u);
     CHECK_EQ(out[0].size(), 25u);
 }
+
+TEST(framer_id_zero_is_a_desync) {
+    StreamFramer f(Direction::ServerToClient);
+    std::vector<Bytes> out;
+    const Bytes zeros(10, 0);  // clif.c lists 0x0000 as 10 bytes, but the server never sends it
+    CHECK(!f.feed(zeros.data(), zeros.size(), out));
+    CHECK(f.desynced());
+    CHECK(out.empty());
+    CHECK(!f.atBoundary());  // a lost stream has no boundary to write at
+}

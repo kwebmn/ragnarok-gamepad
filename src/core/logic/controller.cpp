@@ -32,6 +32,10 @@ constexpr uint32_t kPickupGiveUpMs = 1000;  // still on the ground a second afte
 constexpr int kStopAhead = 2;
 constexpr int kPickupRadius = 10;
 constexpr int kPickupReach = 1;
+constexpr uint32_t kDialogRepeatFirstMs = 400;  // a held D-pad in an NPC window: first repeat, then every
+constexpr uint32_t kDialogRepeatMs = 120;
+constexpr uint32_t kDialogForceCloseMs = 1000;  // B held this long closes a window the NPC left without a button
+constexpr int kNumberMax = 99999999;
 
 bool due(const std::optional<uint32_t>& last, uint32_t now, uint32_t interval) {
     return !last || now - *last >= interval;
@@ -196,8 +200,29 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         aiming_ = false;
         armed_ = 0;  // buttons pressed meanwhile do nothing until pressed again
         approach_.reset();
+        dialog_ = NpcDialog::None;  // the pad does not answer an NPC window now
         return out;
     }
+    if (view.dialog != NpcDialog::None) {  // 0.7: an NPC window: the character stands, the buttons answer it
+        if (dialog_ == NpcDialog::None) {
+            if (wantAttack_ || attackSent_) out.packets.push_back(buildStopAttack());
+            stopAttacking();
+            approach_.reset();
+            aiming_ = false;
+            out.notes.push_back("NPC window: the buttons answer it");
+        }
+        if (view.dialog == NpcDialog::Number && dialog_ != NpcDialog::Number) number_ = 0;  // the client's "0"
+        dialog_ = view.dialog;
+        PadState still = pad;
+        still.lx = still.ly = 0;
+        walk(still, world, view, now, out);
+        answerDialog(view.dialog, buttons, down, now, out);
+        armed_ = 0;  // a button still held when the window closes does nothing until pressed again
+        return out;
+    }
+    if (dialog_ != NpcDialog::None) out.notes.push_back("NPC window closed");
+    dialog_ = NpcDialog::None;
+    bHeldSinceMs_.reset();
     if (view.mouseClicked && (wantAttack_ || approach_)) {  // the player took over with the mouse
         stopAttacking();
         approach_.reset();
@@ -218,6 +243,9 @@ TickOutput Controller::tick(const PadState& pad, const WorldState& world, const 
         steerCamera(pad, now, out);
     else
         aim(pad, world, now, out);
+    talkDirX_ = talkDirY_ = 0;  // talk: the NPC the right stick points at, or the nearest
+    if (!cameraMode_ && std::hypot(double(pad.rx), double(pad.ry)) > kAimOn)
+        camera_.toWorld(pad.rx, -pad.ry, talkDirX_, talkDirY_);
     handleButtons(buttons, down, world, now, out);
     stepApproach(world, now, out);
     maintainTarget(attackHeld(), world, now, out);
@@ -366,6 +394,81 @@ void Controller::fire(const Action& a, bool repeat, const WorldState& world, uin
             break;
         case Action::Kind::CameraToggle:  // switched before the stick was read this tick
             break;
+        case Action::Kind::Talk:
+            if (!repeat) talk(world, now, out);
+            break;
+    }
+}
+
+// 0.7: a click on the NPC, as the client sends it; the server opens the dialog the way it does for a mouse click.
+void Controller::talk(const WorldState& world, uint32_t now, TickOutput& out) {
+    const uint32_t npc = pickNpc(world, now, talkDirX_, talkDirY_);
+    if (npc == 0) {
+        deny(out, talkDirX_ != 0 || talkDirY_ != 0 ? "no NPC that way" : "no NPC within reach");
+        return;
+    }
+    if (wantAttack_ || attackSent_) out.packets.push_back(buildStopAttack());
+    stopAttacking();
+    approach_.reset();
+    out.packets.push_back(buildNpcClick(npc));
+    const std::optional<Cell> pos = world.actorPos(npc, now);
+    out.notes.push_back("talk to NPC " + std::to_string(npc) + (pos ? " at " + cellText(*pos) : std::string()));
+}
+
+// A press, or a held D-pad's repeat, in an NPC window.
+bool Controller::dialogRepeat(uint16_t button, uint16_t held, uint16_t down, uint32_t now) {
+    const size_t bit = bitIndex(button);
+    if (down & button) {
+        repeatAtMs_[bit] = now + kDialogRepeatFirstMs;
+        return true;
+    }
+    if (!(held & button) || int32_t(now - repeatAtMs_[bit]) < 0) return false;
+    repeatAtMs_[bit] = now + kDialogRepeatMs;
+    return true;
+}
+
+// A: the window's button (Next, Close, OK); B: Close, the menu's Cancel; the D-pad: the menu's choice; the number:
+// up / down by 1, RB / LB by 10, right / left by 100.
+void Controller::answerDialog(NpcDialog d, uint16_t held, uint16_t down, uint32_t now, TickOutput& out) {
+    const bool a = down & kPadA;
+    const bool b = down & kPadB;
+    if (!(held & kPadB)) bHeldSinceMs_.reset();
+    else if (b) bHeldSinceMs_ = now;
+    switch (d) {
+        case NpcDialog::None:
+            break;
+        case NpcDialog::Next:
+            if (a) out.dialog.push_back(DialogCommand::Next);
+            break;
+        case NpcDialog::Close:
+            if (a || b) out.dialog.push_back(DialogCommand::Close);
+            break;
+        case NpcDialog::Waiting:  // the NPC is still talking, or left the window without a button
+            if (bHeldSinceMs_ && now - *bHeldSinceMs_ >= kDialogForceCloseMs) {
+                bHeldSinceMs_.reset();
+                out.dialog.push_back(DialogCommand::Close);
+                out.notes.push_back("NPC window without a button: closed with B held");
+            }
+            break;
+        case NpcDialog::Menu:
+            if (dialogRepeat(kPadUp, held, down, now)) out.dialog.push_back(DialogCommand::MenuUp);
+            if (dialogRepeat(kPadDown, held, down, now)) out.dialog.push_back(DialogCommand::MenuDown);
+            if (a) out.dialog.push_back(DialogCommand::MenuOk);
+            if (b) out.dialog.push_back(DialogCommand::MenuCancel);
+            break;
+        case NpcDialog::Number: {
+            int n = number_;
+            const std::pair<uint16_t, int> steps[] = {{kPadUp, 1},    {kPadDown, -1},   {kPadRB, 10},
+                                                      {kPadLB, -10},  {kPadRight, 100}, {kPadLeft, -100}};
+            for (const auto& [button, step] : steps)
+                if (dialogRepeat(button, held, down, now)) n = std::clamp(n + step, 0, kNumberMax);
+            if (n != number_) {
+                number_ = n;
+                out.number = n;
+            }
+            if (a) out.dialog.push_back(DialogCommand::NumberOk);
+            break;
+        }
     }
 }
 

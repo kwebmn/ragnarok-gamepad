@@ -13,7 +13,7 @@ namespace uapad {
 
 // What a gamepad button does.
 struct Action {
-    enum class Kind : uint8_t { None, Attack, Slot, Pickup, SitStand, ClearTarget, CameraToggle };
+    enum class Kind : uint8_t { None, Attack, Slot, Pickup, SitStand, ClearTarget, CameraToggle, Talk };
     Kind kind = Kind::None;
     uint8_t slot = 0;  // Kind::Slot: hotkey index 0-26 (row slot / 9 + 1, key F(slot % 9 + 1))
 };
@@ -30,7 +30,7 @@ using Bindings = std::array<Action, kBindableCount>;  // by position in kBindabl
 
 Bindings defaultBindings();  // the 0.2 hunter layout
 // The action after (dir > 0) or before `a` in the menu's ring: none, attack, slots 1-27, pickup, sit, untarget,
-// camera (the right stick: targets <-> camera).
+// camera (the right stick: targets <-> camera), talk (0.7: to the nearest NPC).
 Action nextAction(Action a, int dir);
 
 const char* buttonToken(size_t i);  // in the file: "A", "LB", "UP"...
@@ -51,6 +51,9 @@ struct Profiles {
     // Layouts saved before 0.5 (a file without [file] version 2) that had R3 clearing the target: R3 now
     // switches the right stick to the camera, and an unused L3 clears the target, as the 0.5 defaults do.
     int movedToCamera = 0;
+    // 0.7: layouts saved before it (file version < 3) with D-pad down on its default slot F9 and no talk anywhere
+    // get talk there, as the 0.7 defaults have it.
+    int movedToTalk = 0;
     Bindings forCharacter(uint32_t charId) const;
 };
 

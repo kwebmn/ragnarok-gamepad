@@ -65,6 +65,12 @@ Sonic Blow on X, Back Sliding on B).*
 - **LT picks up** the nearest item; hold it to collect everything around, skipping what is not yours.
 - **D-pad ←** sits down and stands up.
 
+### NPCs
+- **D-pad ↓ talks to the nearest NPC** (or the one the right stick points at), as a click on it would.
+- **The NPC's windows answer the pad:** A — Next / Close / OK, D-pad ↑ ↓ — choose in a menu, B — cancel; a number
+  (how many to buy or store) goes up and down by 1, 10 and 100. A line at the bottom of the screen says which
+  button does what. The pad presses the client's own buttons, so the dialog goes exactly as with the mouse.
+
 ### Camera
 - **R3 turns the right stick into a camera stick:** left / right turn the camera the way the right mouse button
   does (freely outdoors, 20° either way indoors, as the client allows); up / down zoom. R3 again — back to
@@ -95,15 +101,15 @@ Sonic Blow on X, Back Sliding on B).*
 ### Safe by design
 - **Fail-open:** any internal error switches the pad to pass-through; the client keeps working.
 - **No server changes:** the pad sends the requests the client itself would send.
-- **Build check:** client memory (hotkey bar, cursor, camera) is used only after the code at those addresses has
-  been compared byte for byte; another client build simply goes without those features.
+- **Build check:** client memory (hotkey bar, cursor, camera, NPC windows) is used only after the code at those
+  addresses has been compared byte for byte; another client build simply goes without those features.
 - **Back switches the pad off and on** at any moment.
 - **A readable log** (`uaro-pad.log`) says what the pad saw and decided: which monster it took and why, why a
   slot was refused, which settings were saved.
 
 ## Quick start
 
-**Download:** [uaro-pad-0.5.1.zip](https://github.com/kwebmn/ragnarok-gamepad/raw/main/release/uaro-pad-0.5.1.zip)
+**Download:** [uaro-pad-0.7.0.zip](https://github.com/kwebmn/ragnarok-gamepad/raw/main/release/uaro-pad-0.7.0.zip)
 — the module, its settings file and the player's guide. Just the module, for updating:
 [dinput.dll](https://github.com/kwebmn/ragnarok-gamepad/raw/main/release/dinput.dll). Both are in
 [release/](release/).
@@ -129,7 +135,8 @@ The default layout, every button can be reassigned in the menu:
 | X, Y, B | hotkey slots F1, F2, F3 |
 | RB, RT | slots F4, F5 |
 | LB | slot F6 |
-| D-pad ↑ → ↓ | slots F7, F8, F9 |
+| D-pad ↑ → | slots F7, F8 |
+| D-pad ↓ | talk to the nearest NPC |
 | LT | pick up items |
 | D-pad ← | sit / stand |
 | L3 | clear the target |

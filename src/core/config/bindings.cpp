@@ -11,7 +11,7 @@ namespace uapad {
 namespace {
 
 constexpr int kSlots = 27;
-constexpr int kRing = 2 + kSlots + 4;  // none, attack, 27 slots, pickup, sit, untarget, camera
+constexpr int kRing = 2 + kSlots + 5;  // none, attack, 27 slots, pickup, sit, untarget, camera, talk
 
 const char* const kTokens[kBindableCount] = {"A",  "B",  "X",  "Y",     "LB",   "RB",   "LT",
                                              "RT", "UP", "RIGHT", "DOWN", "LEFT", "L3", "R3"};
@@ -27,6 +27,7 @@ int ringIndex(Action a) {
         case Action::Kind::SitStand: return 3 + kSlots;
         case Action::Kind::ClearTarget: return 4 + kSlots;
         case Action::Kind::CameraToggle: return 5 + kSlots;
+        case Action::Kind::Talk: return 6 + kSlots;
     }
     return 0;
 }
@@ -38,7 +39,8 @@ Action fromRing(int i) {
     if (i == 2 + kSlots) return Action{Action::Kind::Pickup, 0};
     if (i == 3 + kSlots) return Action{Action::Kind::SitStand, 0};
     if (i == 4 + kSlots) return Action{Action::Kind::ClearTarget, 0};
-    return Action{Action::Kind::CameraToggle, 0};
+    if (i == 5 + kSlots) return Action{Action::Kind::CameraToggle, 0};
+    return Action{Action::Kind::Talk, 0};
 }
 
 std::string trim(const std::string& s) {
@@ -59,7 +61,7 @@ std::optional<size_t> buttonIndex(const std::string& token) {
     return std::nullopt;
 }
 
-constexpr int kFileVersion = 2;  // 2: written by 0.5, R3 as the player left it
+constexpr int kFileVersion = 3;  // 2: written by 0.5, R3 as the player left it; 3: 0.7, D-pad down too
 
 struct Section {
     enum class Kind { Default, Character, File, Other };
@@ -80,6 +82,18 @@ bool moveToCamera(Bindings& b) {
     if (r3 == kBindableCount || b[r3].kind != Action::Kind::ClearTarget) return false;
     b[r3] = Action{Action::Kind::CameraToggle, 0};
     if (l3 != kBindableCount && b[l3].kind == Action::Kind::None) b[l3] = Action{Action::Kind::ClearTarget, 0};
+    return true;
+}
+
+// A layout from before 0.7: D-pad down still on the slot F9 it had by default, and nothing talks to NPCs.
+bool moveToTalk(Bindings& b) {
+    size_t down = kBindableCount;
+    for (size_t i = 0; i < kBindableCount; ++i) {
+        if (b[i].kind == Action::Kind::Talk) return false;
+        if (kBindableButtons[i] == kPadDown) down = i;
+    }
+    if (down == kBindableCount || b[down] != Action{Action::Kind::Slot, 8}) return false;
+    b[down] = Action{Action::Kind::Talk, 0};
     return true;
 }
 
@@ -123,7 +137,7 @@ Bindings defaultBindings() {
     set(kPadLB, Action{Action::Kind::Slot, 5});
     set(kPadUp, Action{Action::Kind::Slot, 6});
     set(kPadRight, Action{Action::Kind::Slot, 7});
-    set(kPadDown, Action{Action::Kind::Slot, 8});
+    set(kPadDown, Action{Action::Kind::Talk, 0});  // 0.7; slot F9 before
     set(kPadLT, Action{Action::Kind::Pickup, 0});
     set(kPadLeft, Action{Action::Kind::SitStand, 0});
     set(kPadL3, Action{Action::Kind::ClearTarget, 0});
@@ -155,6 +169,7 @@ std::string actionToken(Action a) {
         case Action::Kind::SitStand: return "sit";
         case Action::Kind::ClearTarget: return "untarget";
         case Action::Kind::CameraToggle: return "camera";
+        case Action::Kind::Talk: return "talk";
     }
     return "none";
 }
@@ -167,6 +182,7 @@ std::optional<Action> parseAction(const std::string& token) {
     if (t == "sit") return Action{Action::Kind::SitStand, 0};
     if (t == "untarget") return Action{Action::Kind::ClearTarget, 0};
     if (t == "camera") return Action{Action::Kind::CameraToggle, 0};
+    if (t == "talk") return Action{Action::Kind::Talk, 0};
     if (t.rfind("slot ", 0) == 0) {
         const std::string digits = trim(t.substr(5));
         char* end = nullptr;
@@ -190,6 +206,7 @@ std::string actionLabel(Action a, Lang lang) {
         case Action::Kind::SitStand: return tr(lang, Text::SitStand);
         case Action::Kind::ClearTarget: return tr(lang, Text::ClearTarget);
         case Action::Kind::CameraToggle: return tr(lang, Text::CameraToggle);
+        case Action::Kind::Talk: return tr(lang, Text::Talk);
     }
     return "—";
 }
@@ -241,9 +258,13 @@ Profiles parseProfiles(const std::string& text) {
         c.bindings = p.fallback;
         for (const auto& [button, action] : s.keys) c.bindings[button] = action;
     }
-    if (version < kFileVersion) {
+    if (version < 2) {
         p.movedToCamera += moveToCamera(p.fallback) ? 1 : 0;
         for (auto& entry : p.characters) p.movedToCamera += moveToCamera(entry.second.bindings) ? 1 : 0;
+    }
+    if (version < 3) {
+        p.movedToTalk += moveToTalk(p.fallback) ? 1 : 0;
+        for (auto& entry : p.characters) p.movedToTalk += moveToTalk(entry.second.bindings) ? 1 : 0;
     }
     return p;
 }
@@ -264,7 +285,8 @@ std::string formatProfiles(const Profiles& profiles) {
     // ASCII only: the character names are in the system code page, and one file should have one encoding.
     out << "; uaRO Pad: button layouts per character. The pad writes this file from its menu (Start in the game).\n";
     out << "; Edit it by hand only while the client is closed. Actions: none, attack, slot 1-27, pickup, sit, untarget,\n";
-    out << "; camera (the right stick switches between picking targets and turning the camera).\n\n";
+    out << "; camera (the right stick switches between picking targets and turning the camera), talk (to the nearest\n";
+    out << "; NPC).\n\n";
     out << "[file]\nversion = " << kFileVersion << "\n\n";
     out << "[default]\n";
     writeSection(out, profiles.fallback);

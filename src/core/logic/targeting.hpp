@@ -28,6 +28,10 @@ std::optional<double> aimScore(const WorldState& world, uint32_t nowMs, uint32_t
 uint32_t pickInDirection(const WorldState& world, uint32_t nowMs, double dirX, double dirY,
                          const std::unordered_map<uint32_t, uint32_t>& blacklistUntil);
 
+// 0.7: the NPC to talk to - within kTargetReach, the nearest by straight-line distance, or with a direction
+// (+y north, not zero) the one it points at best (aimScore); 0 when there is none.
+uint32_t pickNpc(const WorldState& world, uint32_t nowMs, double dirX = 0, double dirY = 0);
+
 // True when nothing of ours has landed on `target` for giveUpMs, counting from the start of the
 // attack or from our last hit, whichever is later.
 bool shouldGiveUp(const WorldState& world, uint32_t target, uint32_t attackSinceMs, uint32_t nowMs, uint32_t giveUpMs);

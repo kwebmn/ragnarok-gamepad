@@ -74,6 +74,27 @@ uint32_t pickInDirection(const WorldState& world, uint32_t nowMs, double dirX, d
     return best;
 }
 
+uint32_t pickNpc(const WorldState& world, uint32_t nowMs, double dirX, double dirY) {
+    const Cell me = world.selfPos(nowMs);
+    const bool aimed = dirX != 0 || dirY != 0;
+    uint32_t best = 0;
+    double bestScore = 0;
+    for (const auto& entry : world.actors()) {
+        const uint32_t id = entry.first;
+        if (!world.isNpc(entry.second)) continue;
+        auto pos = world.actorPos(id, nowMs);
+        if (!pos || cellDistance(me, *pos) > kTargetReach) continue;
+        std::optional<double> score = std::hypot(double(pos->x - me.x), double(pos->y - me.y));
+        if (aimed) score = aimScore(world, nowMs, id, dirX, dirY);
+        if (!score) continue;
+        if (best == 0 || *score < bestScore || (*score == bestScore && id < best)) {
+            best = id;
+            bestScore = *score;
+        }
+    }
+    return best;
+}
+
 bool shouldGiveUp(const WorldState& world, uint32_t target, uint32_t attackSinceMs, uint32_t nowMs, uint32_t giveUpMs) {
     uint32_t ref = attackSinceMs;
     if (auto hit = world.lastHitMs(target); hit && int32_t(*hit - ref) > 0) ref = *hit;

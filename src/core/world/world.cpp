@@ -43,6 +43,12 @@ std::optional<Cell> WorldState::actorPos(uint32_t id, uint32_t nowMs) const {
     return interpolate(a.from, a.to, a.speed, a.moveStartMs, nowMs);
 }
 
+bool WorldState::isNpc(const Actor& a) const {
+    // 45 a warp, 111 and 139 the invisible NPC and warp; option: hiding, cloaking, invisible
+    const bool sprite = a.cls >= 46 && a.cls <= 999 && a.cls != 111 && a.cls != 139;
+    return sprite && a.id != selfId_ && (a.option & 0x46) == 0;
+}
+
 bool WorldState::isMonster(const Actor& a) const {
     // Mob db ids; pets carry battle_config.pet_hair_style (100) in the hair field.
     return a.cls >= 1001 && a.cls <= 3999 && a.hair == 0 && a.id != ownPet_;

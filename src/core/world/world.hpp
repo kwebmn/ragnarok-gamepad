@@ -69,6 +69,9 @@ public:
     const std::unordered_map<uint32_t, Actor>& actors() const { return actors_; }
     std::optional<Cell> actorPos(uint32_t id, uint32_t nowMs) const;
     bool isMonster(const Actor& a) const;
+    // 0.7: an NPC one can talk to - a sprite of the NPC range, not hidden; NPCs dressed as players come as 0x022a,
+    // which the pad does not read, and those dressed as monsters look like monsters.
+    bool isNpc(const Actor& a) const;
     std::optional<uint32_t> lastHitMs(uint32_t target) const;  // last time *we* hit `target`
 
     const std::unordered_map<uint32_t, GroundItem>& groundItems() const { return items_; }

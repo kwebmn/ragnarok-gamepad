@@ -27,7 +27,7 @@ TEST(bindings_default_is_the_hunter_layout) {
     CHECK(b[indexOf(kPadLB)] == slot(5));
     CHECK(b[indexOf(kPadUp)] == slot(6));
     CHECK(b[indexOf(kPadRight)] == slot(7));
-    CHECK(b[indexOf(kPadDown)] == slot(8));
+    CHECK(b[indexOf(kPadDown)] == kind(Action::Kind::Talk));  // 0.7; slot F9 before
     CHECK(b[indexOf(kPadLT)] == kind(Action::Kind::Pickup));
     CHECK(b[indexOf(kPadLeft)] == kind(Action::Kind::SitStand));
     CHECK(b[indexOf(kPadR3)] == kind(Action::Kind::CameraToggle));  // the right stick: targets <-> camera
@@ -35,15 +35,16 @@ TEST(bindings_default_is_the_hunter_layout) {
 }
 
 TEST(bindings_action_ring_wraps) {
-    CHECK(nextAction(kind(Action::Kind::None), -1) == kind(Action::Kind::CameraToggle));
+    CHECK(nextAction(kind(Action::Kind::None), -1) == kind(Action::Kind::Talk));
     CHECK(nextAction(kind(Action::Kind::Attack), +1) == slot(0));
     CHECK(nextAction(slot(0), -1) == kind(Action::Kind::Attack));
     CHECK(nextAction(slot(26), +1) == kind(Action::Kind::Pickup));
     CHECK(nextAction(kind(Action::Kind::ClearTarget), +1) == kind(Action::Kind::CameraToggle));
-    CHECK(nextAction(kind(Action::Kind::CameraToggle), +1) == kind(Action::Kind::None));
+    CHECK(nextAction(kind(Action::Kind::CameraToggle), +1) == kind(Action::Kind::Talk));
+    CHECK(nextAction(kind(Action::Kind::Talk), +1) == kind(Action::Kind::None));
     Action a = kind(Action::Kind::None);
-    for (int i = 0; i < 33; ++i) a = nextAction(a, +1);
-    CHECK(a == kind(Action::Kind::None));  // 33 actions in the ring
+    for (int i = 0; i < 34; ++i) a = nextAction(a, +1);
+    CHECK(a == kind(Action::Kind::None));  // 34 actions in the ring
 }
 
 TEST(bindings_tokens_round_trip) {
@@ -164,4 +165,20 @@ TEST(bindings_a_0_5_file_keeps_r3_as_saved) {
     CHECK(p.fallback[indexOf(kPadL3)] == kind(Action::Kind::None));
     CHECK_EQ(p.movedToCamera, 0);
     CHECK_EQ(parseProfiles(text).movedToCamera, 0);
+}
+
+TEST(bindings_talk_round_trips_and_older_layouts_get_it_on_down) {
+    CHECK(actionToken(kind(Action::Kind::Talk)) == "talk");
+    CHECK(parseAction("talk") == kind(Action::Kind::Talk));
+    CHECK(actionLabel(kind(Action::Kind::Talk), Lang::Ru) == "Говорить с NPC");
+    // 0.6 and older: D-pad down on its default F9 becomes talk; one moved elsewhere, or a file of 0.7, stays.
+    const Profiles old = parseProfiles("[file]\nversion = 2\n[default]\nDOWN = slot 9\n[char 7]\nDOWN = slot 3\n");
+    CHECK(old.fallback[indexOf(kPadDown)] == kind(Action::Kind::Talk));
+    CHECK(old.characters.at(7).bindings[indexOf(kPadDown)] == slot(2));
+    CHECK_EQ(old.movedToTalk, 1);
+    CHECK_EQ(old.movedToCamera, 0);
+    const Profiles kept = parseProfiles("[file]\nversion = 3\n[default]\nDOWN = slot 9\n");
+    CHECK(kept.fallback[indexOf(kPadDown)] == slot(8));
+    CHECK_EQ(kept.movedToTalk, 0);
+    CHECK(formatProfiles(Profiles{}).find("version = 3") != std::string::npos);
 }

@@ -1,6 +1,7 @@
 #include <cmath>
 
 #include "core/config/bindings.hpp"
+#include "core/logic/npc_hint.hpp"
 #include "pad_fixtures.hpp"
 #include "test.hpp"
 
@@ -643,6 +644,10 @@ TEST(ctl_slot_buttons_cover_the_first_row) {
     CHECK(one(o, 0x0072) && rd16(pkt(o, 0).data(), 10) == 19 && rd32(pkt(o, 0).data(), 21) == 110000001u);
     o = tap(pad(kPadRight));  // F8: empty
     CHECK(o.packets.empty() && o.rumble == Rumble::Denied);
+    Bindings b = defaultBindings();  // 0.7: D-pad down talks to NPCs by default; F9 there as before
+    for (size_t i = 0; i < kBindableCount; ++i)
+        if (kBindableButtons[i] == kPadDown) b[i] = Action{Action::Kind::Slot, 8};
+    c.setBindings(b);
     o = tap(pad(kPadDown));  // F9: Ankle Snare, next to us towards the target
     CHECK(one(o, 0x0113) && rd16(pkt(o, 0).data(), 9) == 117);
     CHECK(!c.attacking());  // no button but A starts an attack
@@ -1304,4 +1309,113 @@ TEST(ctl_menu_stops_a_walk_up_and_an_attack) {
     bool stop = false;
     for (const Bytes& b : o.packets) stop = stop || pid(b) == 0x00a7;
     CHECK(stop);
+}
+
+// --- NPCs (0.7) ---
+
+namespace {
+
+ViewInfo dialogView(NpcDialog d) {
+    ViewInfo v = view();
+    v.dialog = d;
+    return v;
+}
+
+WorldState npcWorld() {
+    WorldState w = world();
+    w.apply(EvActor{110000101, 86, 0, 200, Cell{103, 100}, Cell{103, 100}}, 0);  // a town NPC, 3 cells east
+    w.apply(EvActor{110000102, 86, 0, 200, Cell{90, 100}, Cell{90, 100}}, 0);    // another, 10 cells west
+    w.apply(EvActor{110000103, 111, 0, 200, Cell{101, 100}, Cell{101, 100}}, 0);  // an invisible one
+    addMob(w, 110000001, Cell{100, 101});
+    return w;
+}
+
+}  // namespace
+
+TEST(ctl_talk_clicks_the_nearest_npc_or_the_one_the_stick_points_at) {
+    Controller c(Config{});
+    WorldState w = npcWorld();
+    TickOutput o = c.tick(pad(kPadDown), w, view(), 1000);
+    CHECK_EQ(o.packets.size(), 1u);
+    CHECK_EQ(pid(pkt(o, 0)), 0x0090);
+    CHECK_EQ(rd32(pkt(o, 0).data(), 2), 110000101u);
+    CHECK_EQ(int(pkt(o, 0)[6]), 1);
+    c.tick(pad(), w, view(), 1100);
+    o = c.tick(padR(-1, 0, kPadDown), w, view(), 1200);  // the right stick points west
+    CHECK_EQ(rd32(pkt(o, 0).data(), 2), 110000102u);
+    WorldState empty = world();
+    c.tick(pad(), empty, view(), 1300);
+    o = c.tick(pad(kPadDown), empty, view(), 1400);
+    CHECK(o.packets.empty() && o.rumble == Rumble::Denied);
+}
+
+TEST(ctl_npc_window_takes_the_buttons) {
+    Controller c(Config{});
+    WorldState w = npcWorld();
+    PadState p = pad(kPadA);
+    p.lx = 1.0f;  // the stick pushed too: the character stays
+    TickOutput o = c.tick(p, w, dialogView(NpcDialog::Next), 1000);
+    CHECK(!o.mouse.active && o.packets.empty() && !c.attacking());
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::Next);
+    o = c.tick(pad(kPadB), w, dialogView(NpcDialog::Next), 1100);  // B does not end the NPC's talk
+    CHECK(o.dialog.empty());
+    o = c.tick(pad(kPadA), w, dialogView(NpcDialog::Close), 1200);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::Close);
+    o = c.tick(pad(kPadA), w, view(), 1300);  // closed, A still held: no attack until pressed again
+    CHECK(o.packets.empty() && !c.attacking());
+}
+
+TEST(ctl_npc_menu_moves_with_repeat_and_answers) {
+    Controller c(Config{});
+    WorldState w = npcWorld();
+    const ViewInfo menu = dialogView(NpcDialog::Menu);
+    TickOutput o = c.tick(pad(kPadDown), w, menu, 1000);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::MenuDown);
+    CHECK(c.tick(pad(kPadDown), w, menu, 1200).dialog.empty());  // held: the first repeat after 400 ms
+    CHECK(c.tick(pad(kPadDown), w, menu, 1400).dialog.size() == 1);
+    CHECK(c.tick(pad(kPadDown), w, menu, 1520).dialog.size() == 1);
+    o = c.tick(pad(kPadUp), w, menu, 1600);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::MenuUp);
+    o = c.tick(pad(kPadA), w, menu, 1700);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::MenuOk);
+    c.tick(pad(), w, menu, 1800);
+    o = c.tick(pad(kPadB), w, menu, 1900);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::MenuCancel);
+}
+
+TEST(ctl_npc_number_steps_by_1_10_100) {
+    Controller c(Config{});
+    WorldState w = npcWorld();
+    const ViewInfo num = dialogView(NpcDialog::Number);
+    CHECK(!c.tick(pad(kPadDown), w, num, 1000).number);  // not below 0
+    c.tick(pad(), w, num, 1050);
+    CHECK(c.tick(pad(kPadUp), w, num, 1100).number == std::optional<int>(1));
+    CHECK(c.tick(pad(kPadRB), w, num, 1200).number == std::optional<int>(11));
+    CHECK(c.tick(pad(kPadRight), w, num, 1300).number == std::optional<int>(111));
+    CHECK(c.tick(pad(kPadLB), w, num, 1400).number == std::optional<int>(101));
+    TickOutput o = c.tick(pad(kPadA), w, num, 1500);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::NumberOk);
+    c.tick(pad(), w, view(), 1600);  // a new number field starts from the client's 0 again
+    CHECK(c.tick(pad(kPadUp), w, num, 1700).number == std::optional<int>(1));
+}
+
+TEST(ctl_npc_window_without_a_button_closes_with_b_held) {
+    Controller c(Config{});
+    WorldState w = npcWorld();
+    const ViewInfo waiting = dialogView(NpcDialog::Waiting);
+    CHECK(c.tick(pad(kPadB), w, waiting, 1000).dialog.empty());
+    CHECK(c.tick(pad(kPadB), w, waiting, 1500).dialog.empty());
+    TickOutput o = c.tick(pad(kPadB), w, waiting, 2000);
+    CHECK(o.dialog.size() == 1 && o.dialog[0] == DialogCommand::Close);
+    CHECK(c.tick(pad(kPadB), w, waiting, 3100).dialog.empty());  // once
+}
+
+TEST(ctl_npc_hint_names_the_buttons) {
+    CHECK(npcHint(NpcDialog::None, Lang::En).empty());
+    CHECK(npcHint(NpcDialog::Next, Lang::En) == "A: next");
+    CHECK(npcHint(NpcDialog::Menu, Lang::Ru) == "↑ ↓: выбор  ·  A: OK  ·  B: отмена");
+    useSonyLabels(true);
+    CHECK(npcHint(NpcDialog::Close, Lang::Uk) == "Cross / Circle: закрити");
+    CHECK(npcHint(NpcDialog::Number, Lang::En).find("L1 / R1: ±10") != std::string::npos);
+    useSonyLabels(false);
 }

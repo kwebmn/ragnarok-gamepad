@@ -17,6 +17,7 @@ Bytes buildTakeItem(uint32_t floorId);                               // 0x00f5 t
 Bytes buildUseItem(uint16_t index, uint32_t accountId);              // 0x009f useitem
 Bytes buildNameRequest(uint32_t actor);                              // 0x008c getcharnamerequest
 Bytes buildStopAttack();                                             // 0x0118 stopattack
+Bytes buildNpcClick(uint32_t npc);                                   // 0x0090 npcclicked (0.7)
 
 struct Hotkey {
     uint8_t type = 0;  // 0 item, 1 skill

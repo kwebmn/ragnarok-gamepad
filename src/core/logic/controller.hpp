@@ -15,12 +15,20 @@
 
 namespace uapad {
 
+// 0.7: the NPC window the client shows, read from its memory: the text window with its button (Next, Close or none
+// while the NPC is still talking), the menu to choose from, the number field.
+enum class NpcDialog : uint8_t { None, Next, Close, Waiting, Menu, Number };
+
+// What the pad asks of an NPC window, done through the client's own buttons.
+enum class DialogCommand : uint8_t { Next, Close, MenuUp, MenuDown, MenuOk, MenuCancel, NumberOk };
+
 struct ViewInfo {
     bool focused = false;
     int width = 0;  // client area, px
     int height = 0;
     bool mouseClicked = false;  // the player pressed the real left mouse button since the last tick
     bool paused = false;        // the settings menu is open: the pad belongs to it
+    NpcDialog dialog = NpcDialog::None;  // 0.7: an NPC window is open: the buttons answer it
 };
 
 struct VirtualMouse {
@@ -43,6 +51,8 @@ struct TickOutput {
     uint32_t mark = 0;           // a newly chosen monster to flag with "!" for the player; 0: none
     Rumble rumble = Rumble::None;
     std::vector<std::string> notes;  // decisions worth a log line
+    std::vector<DialogCommand> dialog;  // 0.7: for the NPC window, in order
+    std::optional<int> number;          // 0.7: the number to put into the NPC's number field
 };
 
 // The left stick walks, the right stick picks a monster, Back switches the pad off; every other button does
@@ -69,6 +79,7 @@ public:
     bool attacking() const { return wantAttack_; }
     bool approaching() const { return approach_.has_value(); }
     bool cameraMode() const { return cameraMode_; }  // the right stick turns the camera instead of picking
+    NpcDialog dialog() const { return dialog_; }      // 0.7: the NPC window the pad answered last tick
     void setWalkRadius(float fraction) { cfg_.walkRadius = fraction; }  // [stick] walk_radius, from the menu
     // The client's own camera turn (radians, its own count) when it can be read from its memory; nothing
     // otherwise. Once the walk samples show how it maps to the screen, the directions follow it at once.
@@ -117,6 +128,9 @@ private:
     uint32_t takeNearest(const WorldState& world, uint32_t now, const char* why, TickOutput& out);
     void dropFarTarget(const WorldState& world, uint32_t now, TickOutput& out);
     void toggleCamera(TickOutput& out);
+    void talk(const WorldState& world, uint32_t now, TickOutput& out);
+    void answerDialog(NpcDialog d, uint16_t held, uint16_t down, uint32_t now, TickOutput& out);
+    bool dialogRepeat(uint16_t button, uint16_t held, uint16_t down, uint32_t now);
     void steerCamera(const PadState& pad, uint32_t now, TickOutput& out);
     void setTarget(uint32_t id, uint32_t now, TickOutput& out);
     bool targetAlive(const WorldState& world) const;
@@ -155,6 +169,11 @@ private:
     std::unordered_map<uint32_t, uint32_t> blacklist_;  // actor id -> blacklisted until (ms)
     std::unordered_map<uint32_t, uint32_t> markedMs_;   // actor id -> when we last showed its "!"
     std::optional<Approach> approach_;
+    NpcDialog dialog_ = NpcDialog::None;
+    int number_ = 0;                       // what the pad put into the number field
+    std::optional<uint32_t> bHeldSinceMs_;  // B held in a window without a button: closes it after a second
+    double talkDirX_ = 0;                  // the right stick's direction on the map when it points (talk)
+    double talkDirY_ = 0;
     CameraYaw camera_;
 };
 

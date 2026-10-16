@@ -57,6 +57,7 @@ struct Config {
     enum class PadType { Auto, Xbox, Sony } padType = PadType::Auto;
     uint32_t lightbar = 0x0040FF;  // [sony] lightbar: the light bar's colour, 0xRRGGBB (0 = off)
     uint16_t touchpad = 0;         // [sony] touchpad: what its click is - none (0), back, start
+    bool npcHint = true;           // 0.7: [npc] hint - the line over the game while an NPC window takes the buttons
 };
 
 // "none" / "F1"..."F9" in uaro-pad.ini <-> 0 / 1...9.

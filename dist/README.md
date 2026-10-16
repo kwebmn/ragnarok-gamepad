@@ -27,7 +27,8 @@ Delete `dinput.dll`, `uaro-pad.ini` and `uaro-pad-binds.ini` from the client fol
 | X, Y, B | slots F1, F2, F3 |
 | RB, RT | slots F4, F5 |
 | LB | slot F6 — handy for a potion |
-| D-pad ↑, →, ↓ | slots F7, F8, F9 |
+| D-pad ↑, → | slots F7, F8 |
+| D-pad ↓ | talk to the nearest NPC (with the right stick pushed: the NPC it points at) |
 | LT | pick up the nearest item (hold it to collect everything around one by one; what cannot be taken within a second, such as someone else's loot, is skipped) |
 | D-pad ← | sit / stand |
 | Back | switch the module off / on |
@@ -59,13 +60,27 @@ Skills and items go onto the hotkey bar as usual, with the mouse. By default the
 | F5 | RT | Claymore Trap |
 | F6 | LB | a potion |
 | F7 | D-pad ↑ | Improve Concentration |
-| F8, F9 | D-pad →, ↓ | as you like: fly wings, a second potion |
+| F8 | D-pad → | as you like: fly wings, a potion |
 
 ### The camera on the right stick
 
 R3 switches the right stick to the camera: left / right turn it the way the right mouse button does (freely outdoors, 20 degrees either way indoors, as the client allows), up / down zoom (up: closer). R3 again — the right stick picks targets again.
 
 The module reads the camera's turn from the client. After the first turn, walk a few steps with the left stick: the module learns which way the client counts the turn (the log says `camera: follows the client's turn`), and from then on walking and the right stick follow any turn at once, also one made with the mouse.
+
+### NPCs (version 0.7)
+
+D-pad ↓ talks to the nearest NPC within 15 cells; with the right stick pushed — to the NPC it points at. While the NPC's window is open the buttons answer it, and a line at the bottom of the screen says which:
+
+| Window | Buttons |
+|---|---|
+| text with **Next** | A — next |
+| text with **Close** | A or B — close |
+| a menu to choose from | D-pad ↑ ↓ — choose (held, it runs on), A — OK, B — cancel |
+| a number (how many to buy, store, take out) | D-pad ↑ ↓ — by 1, RB / LB — by 10, D-pad → ← — by 100, A — OK |
+| the NPC is still talking, no button | hold B for a second — close (for a window left hanging) |
+
+The character does not walk or attack meanwhile. The keyboard and the mouse keep working in these windows as before. `[npc] hint = 0` in `uaro-pad.ini` hides the line. Layouts saved before 0.7 with D-pad ↓ on F9 get the talk there; one moved elsewhere stays as it was.
 
 ## The Start menu
 
@@ -78,7 +93,7 @@ Start opens the menu "uaRO Pad — character name" over the game window. The gam
 
 ### Buttons
 
-A button can do: attack, any hotkey bar slot — F1–F9 of all three rows (you can see what is in the slot), pick up items, sit / stand, clear the target, switch the right stick (camera / target), or nothing. Start, Back and the sticks cannot be reassigned.
+A button can do: attack, any hotkey bar slot — F1–F9 of all three rows (you can see what is in the slot), pick up items, sit / stand, clear the target, switch the right stick (camera / target), talk to an NPC, or nothing. Start, Back and the sticks cannot be reassigned.
 
 Layouts saved before 0.5 are moved by themselves: R3 switches the right stick to the camera there too, and an unused L3 clears the target.
 
@@ -137,7 +152,7 @@ The client normally captures the mouse; the module leaves it free (Mouse Freedom
 - Equipment on the bar (quick weapon swap) does not work from the gamepad.
 - Buffs and heals — only on yourself.
 - An NPC with a monster sprite can become a target: when none of your hits land on it for 4 seconds, the module drops it.
-- Menus, NPC dialogues and chat — with the mouse and keyboard.
+- Typing words into an NPC (names, passwords), NPC shops and chat — with the mouse and keyboard.
 - Mouse buttons 4 and 5 press only F1–F9 (not rows 2–3 or gamepad actions).
 - The camera on the right stick works with `uaRO.exe` only (the log says `camera: turned in the client's memory`); with another build the right stick only zooms.
 - Zooming goes through the mouse wheel: with the cursor over a game window (inventory, chat) the client scrolls that window instead.

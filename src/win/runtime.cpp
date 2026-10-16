@@ -19,6 +19,7 @@
 #include "core/i18n.hpp"
 #include "core/logic/cursor_bridge.hpp"
 #include "core/logic/mouse_gate.hpp"
+#include "core/logic/npc_hint.hpp"
 #include "core/logic/settings_menu.hpp"
 #include "core/logic/vbutton.hpp"
 #include "core/session.hpp"
@@ -26,6 +27,8 @@
 #include "win/client_bar.hpp"
 #include "win/client_camera.hpp"
 #include "win/client_mouse.hpp"
+#include "win/client_npc.hpp"
+#include "win/hint.hpp"
 #include "win/game_window.hpp"
 #include "win/hooks.hpp"
 #include "win/log.hpp"
@@ -44,6 +47,8 @@ struct State {
     Config cfg;
     std::unique_ptr<Session> session;
     Pads pad;  // 0.6: Xbox or Sony
+    bool npcSupported = false;  // 0.7: the NPC windows are read and answered in the client's memory
+    std::string shownHint;
     VirtualMouse mouse;        // what the client currently gets from us
     VirtualButton button;      // virtual LMB as the client has been told about it
     bool loggedNullRead = false;
@@ -425,6 +430,24 @@ void followTheMouse(bool foreground, DWORD now) {
     }
 }
 
+// 0.7: what the pad asked of the NPC window, and the line that says what its buttons do there.
+void answerNpc(const TickOutput& out, const ViewInfo& view, const PadState& pad) {
+    State& s = S();
+    for (DialogCommand c : out.dialog)
+        if (!clientnpc::answer(c)) LOG_INFO("NPC window: command %d found no window to answer", int(c));
+    if (out.number) clientnpc::typeNumber(s.hwnd, *out.number);
+    const bool answering = s.session->controller().dialog() != NpcDialog::None && view.dialog != NpcDialog::None;
+    const std::string text = s.cfg.npcHint && answering && pad.connected && view.focused && !view.paused
+                                 ? npcHint(view.dialog, s.cfg.lang)
+                                 : std::string();
+    if (text == s.shownHint) return;
+    s.shownHint = text;
+    if (text.empty())
+        hint::hide();
+    else
+        hint::show(s.hwnd, widen(text, CP_UTF8));
+}
+
 void tick() {
     State& s = S();
     const DWORD now = GetTickCount();
@@ -460,6 +483,7 @@ void tick() {
     }
     followTheMouse(view.focused, now);
     view.paused = runMenu(pad, view, now);
+    if (s.npcSupported) view.dialog = clientnpc::read();
     double clientTurn = 0;
     if (s.cameraSupported && clientcamera::readTurn(clientTurn))
         s.session->setClientTurn(clientTurn * 3.14159265358979323846 / 180.0);
@@ -473,6 +497,7 @@ void tick() {
     s.pendingZoom = std::clamp(s.pendingZoom + out.camera.zoomSteps, -8, 8);
     if (!view.focused) s.pendingZoom = 0;
     for (const std::string& note : out.notes) LOG_INFO("%s", note.c_str());
+    answerNpc(out, view, pad);
     for (const std::string& line : s.session->takeLog()) LOG_INFO("%s", line.c_str());
     if (s.cfg.rumble && out.rumble != Rumble::None) s.pad.rumble(out.rumble, now);
     s.pad.update(now);
@@ -507,10 +532,17 @@ void init() {
             LOG_INFO("layouts from before 0.5: R3 now switches the right stick to the camera, an unused L3 clears "
                      "the target (%d layout(s))",
                      layouts.movedToCamera);
+        if (layouts.movedToTalk > 0)
+            LOG_INFO("layouts from before 0.7: D-pad down, on its default F9, now talks to the nearest NPC "
+                     "(%d layout(s))",
+                     layouts.movedToTalk);
         hooks::install();
         s.barSupported = clientbar::supported();
         s.mouseSupported = clientmouse::supported();
         s.cameraSupported = clientcamera::supported();
+        s.npcSupported = clientnpc::supported();
+        LOG_INFO(s.npcSupported ? "NPC windows: answered in the client's memory"
+                                : "NPC windows: unknown client build; the pad does not answer them");
         LOG_INFO(s.cameraSupported ? "camera: turned in the client's memory"
                                    : "camera: unknown client build; the right stick only zooms");
         LOG_INFO(s.mouseSupported ? "game cursor: read from the client's memory"

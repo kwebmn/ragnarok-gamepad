@@ -56,6 +56,15 @@ const Entry kTexts[] = {
     {"stun (stars)", "оглушення (зірочки)", "оглушение (звёздочки)"},
     {"sleep (zzz)", "сон (zzz)", "сон (zzz)"},
     {"silence", "мовчання", "молчание"},
+    {"Talk to NPC", "Говорити з NPC", "Говорить с NPC"},
+    {"{A}: next", "{A}: далі", "{A}: далее"},
+    {"{A} / {B}: close", "{A} / {B}: закрити", "{A} / {B}: закрыть"},
+    {"the NPC is talking  ·  hold {B}: close", "NPC говорить  ·  утримати {B}: закрити",
+     "NPC говорит  ·  удерживать {B}: закрыть"},
+    {"↑ ↓: choose  ·  {A}: OK  ·  {B}: cancel", "↑ ↓: вибір  ·  {A}: OK  ·  {B}: скасувати",
+     "↑ ↓: выбор  ·  {A}: OK  ·  {B}: отмена"},
+    {"↑ ↓: ±1  ·  {LB} / {RB}: ±10  ·  ← →: ±100  ·  {A}: OK", "↑ ↓: ±1  ·  {LB} / {RB}: ±10  ·  ← →: ±100  ·  {A}: OK",
+     "↑ ↓: ±1  ·  {LB} / {RB}: ±10  ·  ← →: ±100  ·  {A}: OK"},
 };
 static_assert(sizeof(kTexts) / sizeof(kTexts[0]) == size_t(Text::Count), "every Text needs its translations");
 

@@ -172,6 +172,8 @@ Config parseConfig(const std::string& text) {
             if (val == "none") c.touchpad = 0;
             if (val == "back") c.touchpad = kPadBack;
             if (val == "start") c.touchpad = kPadStart;
+        } else if (key == "npc.hint") {  // 0.7
+            setBool(val, c.npcHint);
         } else if (key == "general.language") {
             if (auto l = parseLang(val)) c.lang = *l;
         } else if (key == "mouse.lock") {

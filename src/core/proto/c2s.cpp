@@ -51,6 +51,14 @@ Bytes buildUseItem(uint16_t index, uint32_t accountId) {
     return b;
 }
 
+Bytes buildNpcClick(uint32_t npc) {
+    Bytes b(7, 0);
+    wr16(b, 0, 0x0090);
+    wr32(b, 2, npc);
+    wr8(b, 6, 1);
+    return b;
+}
+
 Bytes buildNameRequest(uint32_t actor) {
     Bytes b(11, 0);
     wr16(b, 0, 0x008c);

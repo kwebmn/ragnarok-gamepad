@@ -55,6 +55,12 @@ enum class Text : uint16_t {
     MarkStun,
     MarkSleep,
     MarkSilence,
+    Talk,  // 0.7: the action, and the NPC window's hint: {A}, {B}, {LB}, {RB} are the buttons' names
+    HintNext,
+    HintClose,
+    HintWait,
+    HintMenu,
+    HintNumber,
     Count
 };
 

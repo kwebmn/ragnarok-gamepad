@@ -8,7 +8,8 @@ Languages: English (this file), [українська](README.uk.md), [русс�
 
 1. Close the client.
 2. Copy `dinput.dll` and `uaro-pad.ini` into the client folder, next to `uaRO.exe`. If a `dinput.dll` is already there (ROExt), replace it. The module takes over ROExt's mouse freedom and, as options, its borderless window and CPU saving; ROExt's other options (a fixed window size, the code page, Alt+F4) are not in the module.
-3. Plug in an Xbox gamepad (or any gamepad Windows sees as XInput) and start the client.
+3. Plug in an Xbox gamepad (or one Windows sees as XInput) or a PlayStation one (DualShock 4, DualSense) and start
+   the client.
 
 ## Remove
 

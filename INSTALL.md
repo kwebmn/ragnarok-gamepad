@@ -10,9 +10,10 @@ is never changed — delete the file and the game is exactly as it was.
 - **The uaRO client** installed (the folder with `uaRO.exe`).
 - **Windows** 7 or newer.
 - **A controller Windows sees as an Xbox controller (XInput):** Xbox 360, Xbox One, Xbox Series, or a
-  compatible one. Wired, through the Xbox wireless adapter or Bluetooth — all work. Other controllers
-  (PlayStation, Switch) work through DS4Windows or a similar tool that makes them look like an Xbox controller
-  (Steam Input too, with the game added to Steam as a non-Steam game).
+  compatible one. Wired, through the Xbox wireless adapter or Bluetooth — all work. **PlayStation controllers**
+  (DualShock 4, DualSense, DualSense Edge) work as they are since 0.6, by cable or Bluetooth: the menu names
+  their buttons (Cross, Circle, L1...), `[sony] lightbar` colours the light bar. Switch controllers work through
+  a tool that makes them look like an Xbox controller (Steam Input, BetterJoy).
 
 ## 1. Download
 

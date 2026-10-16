@@ -53,11 +53,17 @@ struct Config {
     bool borderless = false;
     WindowPlacement position;
     int backgroundSleepMs = 10;  // a frame sleeps this long while the game is in the background; 0 = never
+    // 0.6: which controller - auto (an Xbox one first, else a Sony one), xbox, sony
+    enum class PadType { Auto, Xbox, Sony } padType = PadType::Auto;
+    uint32_t lightbar = 0x0040FF;  // [sony] lightbar: the light bar's colour, 0xRRGGBB (0 = off)
+    uint16_t touchpad = 0;         // [sony] touchpad: what its click is - none (0), back, start
 };
 
 // "none" / "F1"..."F9" in uaro-pad.ini <-> 0 / 1...9.
 std::optional<int> parseFKey(const std::string& token);
 std::string fKeyToken(int key);
+// 0.6: [sony] lightbar - blue, red, green, purple, orange, white, off or RRGGBB.
+std::optional<uint32_t> parseColour(const std::string& v);
 
 // Parses uaro-pad.ini text. Unknown sections/keys and malformed values keep the defaults.
 Config parseConfig(const std::string& text);

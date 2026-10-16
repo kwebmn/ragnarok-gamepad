@@ -30,7 +30,7 @@
 #include "win/hooks.hpp"
 #include "win/log.hpp"
 #include "win/overlay.hpp"
-#include "win/xinput_pad.hpp"
+#include "win/pads.hpp"
 
 namespace uapad::runtime {
 namespace {
@@ -43,7 +43,7 @@ struct State {
     HWND hwnd = nullptr;
     Config cfg;
     std::unique_ptr<Session> session;
-    XInputPad pad;
+    Pads pad;  // 0.6: Xbox or Sony
     VirtualMouse mouse;        // what the client currently gets from us
     VirtualButton button;      // virtual LMB as the client has been told about it
     bool loggedNullRead = false;
@@ -517,6 +517,7 @@ void init() {
                                   : "game cursor: unknown client build; its position is estimated");
         LOG_INFO(s.barSupported ? "hotkey bar: read from the client's memory"
                                 : "hotkey bar: unknown client build; slots only from the server's 0x02b9 / 0x02ba");
+        s.pad.configure(s.cfg);  // 0.6: [pad] type, [sony]
         if (s.pad.load())
             LOG_INFO("XInput: %s", s.pad.dllName());
         else

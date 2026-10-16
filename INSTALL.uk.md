@@ -10,9 +10,10 @@
 - **Встановлений клієнт uaRO** (тека з `uaRO.exe`).
 - **Windows** 7 або новіша.
 - **Геймпад, який Windows бачить як Xbox-контролер (XInput):** Xbox 360, Xbox One, Xbox Series або сумісний.
-  Дротом, через бездротовий адаптер Xbox чи Bluetooth — усе працює. Інші геймпади (PlayStation, Switch) працюють
-  через DS4Windows або подібну програму, яка видає їх за Xbox-контролер (а також через Steam Input, якщо додати
-  гру в Steam як сторонню).
+  Дротом, через бездротовий адаптер Xbox чи Bluetooth — усе працює. **Геймпади PlayStation** (DualShock 4,
+  DualSense, DualSense Edge) працюють як є з 0.6, дротом або Bluetooth: меню називає їхні кнопки (Cross, Circle,
+  L1...), `[sony] lightbar` задає колір підсвітки. Геймпади Switch — через програму, яка видає їх за
+  Xbox-контролер (Steam Input, BetterJoy).
 
 ## 1. Завантажте
 

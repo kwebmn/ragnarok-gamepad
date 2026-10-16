@@ -137,7 +137,14 @@ Action nextAction(Action a, int dir) {
 }
 
 const char* buttonToken(size_t i) { return i < kBindableCount ? kTokens[i] : ""; }
-const char* buttonLabel(size_t i) { return i < kBindableCount ? kLabels[i] : ""; }
+// 0.6: a Sony controller's own names (Cross is A's place, Circle B's, Square X's, Triangle Y's).
+const char* const kSonyLabels[kBindableCount] = {"Cross",   "Circle",  "Square",  "Triangle", "L1", "R1", "L2",
+                                                 "R2",      "D-pad ↑", "D-pad →", "D-pad ↓",  "D-pad ←", "L3", "R3"};
+bool g_sony = false;
+
+void useSonyLabels(bool on) { g_sony = on; }
+
+const char* buttonLabel(size_t i) { return i < kBindableCount ? (g_sony ? kSonyLabels[i] : kLabels[i]) : ""; }
 
 std::string actionToken(Action a) {
     switch (a.kind) {

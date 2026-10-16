@@ -1,5 +1,7 @@
 #include "core/config/config.hpp"
 
+#include "core/logic/pad.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -91,6 +93,19 @@ std::optional<int> parseFKey(const std::string& token) {
 
 std::string fKeyToken(int key) { return key >= 1 && key <= 9 ? "F" + std::to_string(key) : "none"; }
 
+// 0.6: a light bar's colour - a name (blue, red, green, purple, orange, white, off) or RRGGBB in hex.
+std::optional<uint32_t> parseColour(const std::string& v) {
+    static const struct {
+        const char* name;
+        uint32_t rgb;
+    } kNames[] = {{"blue", 0x0040FF}, {"red", 0xFF0000}, {"green", 0x00FF20}, {"purple", 0x9000FF},
+                  {"orange", 0xFF6000}, {"white", 0xFFFFFF}, {"off", 0x000000}};
+    for (const auto& n : kNames)
+        if (v == n.name) return n.rgb;
+    if (v.size() != 6 || v.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return std::nullopt;
+    return uint32_t(std::strtoul(v.c_str(), nullptr, 16));
+}
+
 Config parseConfig(const std::string& text) {
     Config c;
     std::istringstream in(text);
@@ -147,6 +162,16 @@ Config parseConfig(const std::string& text) {
             if (auto m = parseMarkStyle(val)) c.mark = *m;
         } else if (key == "rumble.enabled") {
             setBool(val, c.rumble);
+        } else if (key == "pad.type") {  // 0.6
+            if (val == "auto") c.padType = Config::PadType::Auto;
+            if (val == "xbox") c.padType = Config::PadType::Xbox;
+            if (val == "sony") c.padType = Config::PadType::Sony;
+        } else if (key == "sony.lightbar") {
+            if (auto colour = parseColour(val)) c.lightbar = *colour;
+        } else if (key == "sony.touchpad") {
+            if (val == "none") c.touchpad = 0;
+            if (val == "back") c.touchpad = kPadBack;
+            if (val == "start") c.touchpad = kPadStart;
         } else if (key == "general.language") {
             if (auto l = parseLang(val)) c.lang = *l;
         } else if (key == "mouse.lock") {

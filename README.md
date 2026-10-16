@@ -1,6 +1,6 @@
 # Ragnarok Gamepad
 
-**Play the classic Ragnarok Online client with an Xbox controller.** A drop-in `dinput.dll` for the
+**Play the classic Ragnarok Online client with an Xbox or PlayStation controller.** A drop-in `dinput.dll` for the
 [uaRO](https://uaro.kiev.ua) client (`uaRO.exe`, a 2007 Sakexe, packet version 22): walk with the stick, fight
 with the buttons, cast skills from the hotkey bar without touching the mouse — and keep the keyboard and mouse
 working alongside. It also fixes the client's mouse and window: the cursor is never captured, follows the Windows

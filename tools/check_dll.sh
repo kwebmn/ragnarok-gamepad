@@ -10,7 +10,7 @@ if ! grep -q -E '^\s+\[ *[0-9]+\] DirectInputCreateA$' <<<"$info"; then
     exit 1
 fi
 imports=$(awk '/DLL Name:/ {print $3}' <<<"$info")
-bad=$(grep -v -i -E '^(KERNEL32|USER32|GDI32|WS2_32|msvcrt)\.dll$' <<<"$imports" || true)
+bad=$(grep -v -i -E '^(KERNEL32|USER32|GDI32|WS2_32|msvcrt|hid|SETUPAPI)\.dll$' <<<"$imports" || true)  # 0.6: hid, setupapi (Sony)
 if [ -n "$bad" ]; then
     echo "FAIL: unexpected imports: $bad"
     exit 1
